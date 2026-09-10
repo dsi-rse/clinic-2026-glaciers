@@ -1,0 +1,35 @@
+<!--
+  Labeling interface for glacier crevasse segmentation.
+
+  To add or rename a class, edit the <Label> list below and re-run ./labelstudio/setup.sh.
+  Note that changing this after people have started labeling does NOT backfill annotations
+  that were already submitted.
+
+  Two things that look like bugs if you get them wrong:
+    * Controls render in document order, so BrushLabels and Choices must stay ABOVE <Image>.
+      Below a tall image they scroll out of view, and a brush with no label selected silently
+      refuses to paint.
+    * The attribute is requiredMessage. Older docs say requiredWarning, which this version
+      ignores without complaint.
+-->
+<View>
+  <BrushLabels name="mask" toName="image">
+    <Label value="crevasse" background="#FF0000" hotkey="1"/>
+  </BrushLabels>
+
+  <Choices name="confidence" toName="image" choice="single-radio" required="true"
+           showInline="true"
+           requiredMessage="Choose a confidence level (low, medium, or high) before submitting.">
+    <Choice value="low" hotkey="7"
+            hint="Poor image quality, or you are unsure what counts as a crevasse here."/>
+    <Choice value="medium" hotkey="8"
+            hint="Mostly clear, but some judgment calls or faint features you may have missed."/>
+    <Choice value="high" hotkey="9"
+            hint="Features are unambiguous and your mask covers all of them."/>
+  </Choices>
+
+  <Image name="image" value="$image"
+         zoom="true" zoomControl="true"
+         brightnessControl="true" contrastControl="true"
+         rotateControl="false" crosshair="true"/>
+</View>

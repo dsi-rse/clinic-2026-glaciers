@@ -14,3 +14,29 @@ services:
     # At least one of stdin_open or tty is required to make devcontainer work
     stdin_open: true
     tty: true
+
+  # Label Studio, for hand-labeling the images. See labelstudio/README.md.
+  # Start it with `make labelstudio`, not `docker compose up`, so that the project and its
+  # image storage get configured too.
+  labelstudio:
+    image: heartexlabs/label-studio:1.23.0
+    ports:
+      - "8080:8080"
+    volumes:
+      # Annotations live in this named volume. `docker compose down -v` deletes them.
+      - labelstudio-state:/label-studio/data
+      # The images, read-only: labeling never needs to write to shared data.
+      - ${DATA_DIR}:/label-studio/files:ro
+    environment:
+      LABEL_STUDIO_USERNAME: ${LABELSTUDIO_USERNAME:-student@uchicago.edu}
+      LABEL_STUDIO_PASSWORD: ${LABELSTUDIO_PASSWORD:-glaciers2026}
+      # Presets the API token so labelstudio/setup.sh can configure the project on a cold
+      # start without anyone copying a token out of the web UI.
+      LABEL_STUDIO_USER_TOKEN: ${LABELSTUDIO_TOKEN:-clinic2026glaciersdevtoken}
+      LABEL_STUDIO_ENABLE_LEGACY_API_TOKEN: "true"
+      # Serve the images straight out of DATA_DIR instead of copying them into Label Studio.
+      LOCAL_FILES_SERVING_ENABLED: "true"
+      LOCAL_FILES_DOCUMENT_ROOT: /label-studio/files
+
+volumes:
+  labelstudio-state:

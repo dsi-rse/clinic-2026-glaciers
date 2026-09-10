@@ -1,0 +1,16 @@
+services:
+  clinic-2026-glaciers:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/project
+      - ${DATA_DIR}:/data
+    
+    environment:
+      DATA_DIR: /data
+    
+    shm_size: '16gb'
+    # At least one of stdin_open or tty is required to make devcontainer work
+    stdin_open: true
+    tty: true

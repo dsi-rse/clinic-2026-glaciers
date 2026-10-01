@@ -7,23 +7,21 @@ assignees: ''
 
 ---
 
-### What is the task?
+## Context
 
-This should be a short description.
+Short description of the task and how it relates to the project goals. 
 
-### Definition of Done
+## Acceptance Criteria
 
-What has to be accomplished for this task to be completely done?
-It should be quickly verifiable by the code reviewer. If it takes the reviewer
-more than a trivial amount of time to understand how to run the function
-with sample inputs, where to find the presentation, etc. the task will be considered
-incomplete until clarification is provided.
+- [ ] Specific, checkable outcomes required to complete your task.
+- [ ] Any prior tasks that you have not completed should be listed here ('#' directly followed by the issue number will create a link in GitHub). 
+- [ ] See [the clinic website](https://clinic.ds.uchicago.edu/templates/weekly-tasks.html) for further guidance.
+- [ ] Delete these instructions
 
-For example:
-- function that takes in a string and returns all named entities as a list
-- short presentation summarizing the BERT paper for teammates
-- required steps outlined to implement coreference resolution and tasks created
+## Definition of Done
 
-### Resources
+- [ ] Any code written is reviewed and approved by the TA or mentor.
+- [ ] Any code written is merged to main.
 
-Optional. Resources that might be relevant to complete this task. These will often be shared in slack too.
+## Notes / Resources (optional)
+

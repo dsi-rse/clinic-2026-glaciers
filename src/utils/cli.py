@@ -1,4 +1,5 @@
 """CLI for the clinic-2026-glaciers project."""
+
 import json
 import logging
 from pathlib import Path
@@ -7,8 +8,13 @@ import click
 
 from utils.evaluation import discover_evaluators
 from utils.inference import discover_inference_strategies
-from utils.pipeline import DEFAULT_INPUT, DEFAULT_OUTPUT_DIR, run_evaluation, run_inference, run_pipeline
-
+from utils.pipeline import (
+    DEFAULT_INPUT,
+    DEFAULT_OUTPUT_DIR,
+    run_evaluation,
+    run_inference,
+    run_pipeline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +44,7 @@ def _parse_params(params: tuple[str, ...]) -> dict[str, object]:
 # CLI group
 # ---------------------------------------------------------------------------
 
+
 @click.group()
 def cli() -> None:
     """clinic-2026-glaciers CLI."""
@@ -48,10 +55,15 @@ def cli() -> None:
 # infer
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
-@click.option("--strategy", "strategy_name", required=True,
-              type=click.Choice(STRATEGIES.keys(), case_sensitive=True),
-              help="Name of the strategy to run.")
+@click.option(
+    "--strategy",
+    "strategy_name",
+    required=True,
+    type=click.Choice(STRATEGIES.keys(), case_sensitive=True),
+    help="Name of the strategy to run.",
+)
 @click.option("--param", "params", multiple=True, help="Strategy param as key=value.")
 @click.option(
     "--input",
@@ -66,9 +78,16 @@ def cli() -> None:
     default=DEFAULT_OUTPUT_DIR,
     help="Base output directory.",
 )
-def infer(strategy_name: str, params: tuple[str, ...], input_path: Path, output_dir: Path) -> None:
+def infer(
+    strategy_name: str, params: tuple[str, ...], input_path: Path, output_dir: Path
+) -> None:
     """Run an inference strategy on the input data."""
-    run_dir = run_inference(strategy_name, input_path, base_output_dir=output_dir, params=_parse_params(params))
+    run_dir = run_inference(
+        strategy_name,
+        input_path,
+        base_output_dir=output_dir,
+        params=_parse_params(params),
+    )
     click.echo(f"Done. Outputs saved to {run_dir}")
 
 
@@ -76,10 +95,15 @@ def infer(strategy_name: str, params: tuple[str, ...], input_path: Path, output_
 # evaluate
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
-@click.option("--evaluator", "evaluator_name", required=True,
-              type=click.Choice(EVALUATORS.keys(), case_sensitive=True),
-              help="Name of the evaluator to use.")
+@click.option(
+    "--evaluator",
+    "evaluator_name",
+    required=True,
+    type=click.Choice(EVALUATORS.keys(), case_sensitive=True),
+    help="Name of the evaluator to use.",
+)
 @click.option(
     "--run-dir",
     "run_dir",
@@ -104,13 +128,22 @@ def evaluate(evaluator_name: str, run_dir: Path, expected_path: Path) -> None:
 # run (infer + evaluate)
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
-@click.option("--strategy", "strategy_name", required=True,
-              type=click.Choice(STRATEGIES.keys(), case_sensitive=True),
-              help="Name of the strategy to run.")
-@click.option("--evaluator", "evaluator_name", required=True,
-              type=click.Choice(EVALUATORS.keys(), case_sensitive=True),
-              help="Name of the evaluator to use.")
+@click.option(
+    "--strategy",
+    "strategy_name",
+    required=True,
+    type=click.Choice(STRATEGIES.keys(), case_sensitive=True),
+    help="Name of the strategy to run.",
+)
+@click.option(
+    "--evaluator",
+    "evaluator_name",
+    required=True,
+    type=click.Choice(EVALUATORS.keys(), case_sensitive=True),
+    help="Name of the evaluator to use.",
+)
 @click.option("--param", "params", multiple=True, help="Strategy param as key=value.")
 @click.option(
     "--input",
@@ -142,8 +175,11 @@ def run(
 ) -> None:
     """Run inference and evaluation in a single step."""
     run_dir = run_pipeline(
-        strategy_name, evaluator_name, input_path,
-        expected_path=expected_path, base_output_dir=output_dir,
+        strategy_name,
+        evaluator_name,
+        input_path,
+        expected_path=expected_path,
+        base_output_dir=output_dir,
         params=_parse_params(params),
     )
     click.echo(f"Done. Results saved to {run_dir}")

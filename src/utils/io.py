@@ -1,3 +1,5 @@
+"""Reading and writing pipeline inputs and outputs."""
+
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -24,4 +26,3 @@ def load_outputs(output_path: Path) -> Mapping[str, Any]:
     item keys to their output values.
     """
     raise NotImplementedError  # TODO: Implement
-

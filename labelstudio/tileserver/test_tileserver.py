@@ -10,19 +10,26 @@ import tileserver
 from PIL import Image
 
 HEIGHT, WIDTH, BLOCK, TILE = 300, 250, 64, 128
+MAX_GRAY = 255
+# 3 x 2 tiles of TILE, minus the nearly-empty bottom-right one
+TILES_WITH_DATA = 5
 
 
 @pytest.fixture
 def frame(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A 300 x 250 frame with NaNs, a zero, flagged pixels, and an almost-empty corner tile."""
     rng = np.random.default_rng(12345)
-    values = rng.lognormal(mean=-3.0, sigma=1.5, size=(HEIGHT, WIDTH)).astype(np.float32)
+    values = rng.lognormal(mean=-3.0, sigma=1.5, size=(HEIGHT, WIDTH)).astype(
+        np.float32
+    )
     values[:, :40] = np.nan  # nodata strip, like the swath edge of a real frame
     values[5, 100] = 0.0  # log10 undefined
     values[2 * TILE :, TILE:] = np.nan  # bottom-right tile (2, 1) ...
     values[260, 210] = 0.5  # ... has a single valid pixel
     exception = np.zeros((HEIGHT, WIDTH), dtype=np.uint8)
-    exception[50:60, 50:150] = 2  # flagged, with absurd values that must not move the stretch
+    exception[50:60, 50:150] = (
+        2  # flagged, with absurd values that must not move the stretch
+    )
     values[50:60, 50:150] = 1e6
 
     path = tmp_path / "images" / "frame.h5"
@@ -34,7 +41,9 @@ def frame(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     monkeypatch.setattr(tileserver, "BLOCK", BLOCK)
     monkeypatch.setattr(tileserver, "TILE_SIZE", TILE)
-    monkeypatch.setattr(tileserver, "STRIP_ROWS", 50)  # does not divide BLOCK: exercises strips
+    monkeypatch.setattr(
+        tileserver, "STRIP_ROWS", 50
+    )  # does not divide BLOCK: exercises strips
     monkeypatch.setattr(tileserver, "IMAGE_DIR", path.parent)
     monkeypatch.setattr(tileserver, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(tileserver, "_stats_memo", {})
@@ -68,7 +77,9 @@ def test_block_valid_counts(frame: Path) -> None:
     assert counts.shape == (5, 4)
     for row in range(5):
         for col in range(4):
-            block = valid[row * BLOCK : (row + 1) * BLOCK, col * BLOCK : (col + 1) * BLOCK]
+            block = valid[
+                row * BLOCK : (row + 1) * BLOCK, col * BLOCK : (col + 1) * BLOCK
+            ]
             assert counts[row, col] == block.sum()
 
 
@@ -87,7 +98,9 @@ def test_list_tiles_skips_nearly_empty(frame: Path) -> None:
 def test_list_tiles_any_block_multiple(frame: Path) -> None:
     """The same stats give tiles of any size that is a whole number of blocks."""
     stats = tileserver.compute_stats(frame)
-    assert len(tileserver.list_tiles(stats, BLOCK, 0.0)) < 5 * 4  # the empty corner is skipped
+    assert (
+        len(tileserver.list_tiles(stats, BLOCK, 0.0)) < 5 * 4
+    )  # the empty corner is skipped
     big = tileserver.list_tiles(stats, 4 * BLOCK, 0.0)
     assert [(t["row"], t["col"], t["width"], t["height"]) for t in big] == [
         (0, 0, WIDTH, 4 * BLOCK),
@@ -107,7 +120,9 @@ def test_render_tile(frame: Path) -> None:
     tile_valid = valid[:TILE, :TILE]
     assert (gray[~tile_valid] == 0).all()
     assert (gray[tile_valid] >= 1).all()
-    assert gray[tile_valid].min() == 1 and gray[tile_valid].max() == 255  # clipped tails
+    assert (
+        gray[tile_valid].min() == 1 and gray[tile_valid].max() == MAX_GRAY
+    )  # clipped tails
 
     edge = tileserver.render_tile(frame, stats, TILE, 2, 1)
     assert edge.shape == (HEIGHT - 2 * TILE, WIDTH - TILE)
@@ -152,13 +167,18 @@ def test_index(frame: Path) -> None:
     """The index lists every tile with data, tagged with its file."""
     index = tileserver.build_index(frame.parent)
     assert {t["file"] for t in index} == {"frame.h5"}
-    assert len(index) == 5  # 3 x 2 tiles minus the nearly-empty corner
+    assert len(index) == TILES_WITH_DATA
 
 
 def test_tile_url() -> None:
     """Tile URLs carry their size; older URLs without one still parse."""
     match = tileserver.TILE_URL.match("/tile/sub/dir/a%20b.h5/4096/3/12.png")
-    assert match.group("file", "size", "row", "col") == ("sub/dir/a%20b.h5", "4096", "3", "12")
+    assert match.group("file", "size", "row", "col") == (
+        "sub/dir/a%20b.h5",
+        "4096",
+        "3",
+        "12",
+    )
     legacy = tileserver.TILE_URL.match("/tile/a.h5/3/12.png")
     assert legacy.group("file", "size", "row", "col") == ("a.h5", None, "3", "12")
     assert tileserver.TILE_URL.match("/tile/a.txt/3/12.png") is None

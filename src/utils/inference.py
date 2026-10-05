@@ -1,4 +1,5 @@
 """Basic scaffold for any inference strategy."""
+
 import logging
 from abc import ABC, abstractmethod
 from enum import StrEnum
@@ -21,10 +22,17 @@ class InferenceStrategy(ABC):
     """Abstract base class for inference strategies."""
 
     @abstractmethod
-    def do_inference(self, inference_input: Any) -> dict[str, Any] | None:
-        pass
+    def do_inference(self, inference_input: Any) -> dict[str, Any] | None:  # noqa: ANN401
+        """Run inference on one input.
 
-    def do_inference_safe(self, inference_input: Any) -> tuple[dict[str, Any] | None, InferenceStatus]:
+        Returns:
+            A dict with the result, or None if inference failed.
+        """
+
+    def do_inference_safe(
+        self,
+        inference_input: Any,  # noqa: ANN401
+    ) -> tuple[dict[str, Any] | None, InferenceStatus]:
         """Run ``do_inference`` with exception handling.
 
         Returns:
@@ -54,17 +62,19 @@ class InferenceStrategy(ABC):
         return {
             key: value
             for key, value in self.__dict__.items()
-            if not callable(value) and not key.startswith('_')
+            if not callable(value) and not key.startswith("_")
         }
 
 
 def discover_inference_strategies() -> dict[str, type]:
     """Discover all concrete InferenceStrategy subclasses in the inference_strategies package."""
     from utils import inference_strategies as pkg
+
     return discover_subclasses(pkg, InferenceStrategy)
 
 
 def get_inference_strategy(name: str) -> type:
     """Get a specific InferenceStrategy subclass by class name."""
     from utils import inference_strategies as pkg
+
     return get_subclass(name, pkg, InferenceStrategy, label="inference strategy")

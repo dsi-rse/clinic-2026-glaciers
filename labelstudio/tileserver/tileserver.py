@@ -74,7 +74,9 @@ def valid_mask(values: np.ndarray, exception: np.ndarray | None) -> np.ndarray:
     return valid
 
 
-def _read(grid: h5py.Group, rows: slice, cols: slice) -> tuple[np.ndarray, np.ndarray | None]:
+def _read(
+    grid: h5py.Group, rows: slice, cols: slice
+) -> tuple[np.ndarray, np.ndarray | None]:
     values = grid[LAYER][rows, cols]
     exception = grid[EXCEPTION_MASK][rows, cols] if EXCEPTION_MASK in grid else None
     return values, exception
@@ -138,7 +140,10 @@ def get_stats(path: Path) -> dict:
             if cached.get("key") == key:
                 stats = cached
         if stats is None:
-            print(f"Computing display range for {path.name} (one-time) ...", file=sys.stderr)
+            print(
+                f"Computing display range for {path.name} (one-time) ...",
+                file=sys.stderr,
+            )
             stats = {"key": key, **compute_stats(path)}
             try:
                 CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -153,10 +158,14 @@ def check_tile_size(stats: dict, size: int) -> None:
     """Tiles must be whole blocks, so their valid-pixel counts can be summed from blocks."""
     block = stats["block"]
     if size % block or not block <= size <= MAX_TILE_SIZE:
-        raise ValueError(f"tile size must be a multiple of {block} up to {MAX_TILE_SIZE}")
+        raise ValueError(
+            f"tile size must be a multiple of {block} up to {MAX_TILE_SIZE}"
+        )
 
 
-def tile_bounds(stats: dict, size: int, row: int, col: int) -> tuple[int, int, int, int]:
+def tile_bounds(
+    stats: dict, size: int, row: int, col: int
+) -> tuple[int, int, int, int]:
     """(x0, y0, width, height) of a tile. Tiles on the right and bottom edges are smaller."""
     x0, y0 = col * size, row * size
     return x0, y0, min(size, stats["width"] - x0), min(size, stats["height"] - y0)
@@ -200,7 +209,9 @@ def render_tile(path: Path, stats: dict, size: int, row: int, col: int) -> np.nd
     if width <= 0 or height <= 0 or row < 0 or col < 0:
         raise IndexError(f"tile ({row}, {col}) is outside the frame")
     with h5py.File(path, "r") as handle:
-        values, exception = _read(handle[GRID], slice(y0, y0 + height), slice(x0, x0 + width))
+        values, exception = _read(
+            handle[GRID], slice(y0, y0 + height), slice(x0, x0 + width)
+        )
     valid = valid_mask(values, exception)
     with np.errstate(divide="ignore", invalid="ignore"):
         db = 10.0 * np.log10(values)
@@ -220,7 +231,10 @@ def resolve(relative: str, root: Path | None = None) -> Path:
     """The file under root that a URL names, refusing anything that escapes root."""
     root = root or IMAGE_DIR
     path = (root / relative).resolve()
-    if not path.is_relative_to(root.resolve()) or path.suffix.lower() not in (".h5", ".hdf5"):
+    if not path.is_relative_to(root.resolve()) or path.suffix.lower() not in (
+        ".h5",
+        ".hdf5",
+    ):
         raise FileNotFoundError(relative)
     if not path.is_file():
         raise FileNotFoundError(relative)
@@ -231,7 +245,9 @@ def build_index(root: Path | None = None) -> list[dict]:
     """Every labelable tile of every frame under root."""
     root = root or IMAGE_DIR
     index = []
-    for path in sorted(p for p in root.rglob("*") if p.suffix.lower() in (".h5", ".hdf5")):
+    for path in sorted(
+        p for p in root.rglob("*") if p.suffix.lower() in (".h5", ".hdf5")
+    ):
         try:
             stats = get_stats(path)
         except (OSError, KeyError) as exc:
@@ -251,7 +267,9 @@ TILE_URL = re.compile(
 class Handler(BaseHTTPRequestHandler):
     """HTTP front end for the functions above."""
 
-    def _send(self, status: int, body: bytes, content_type: str, cache: bool = False) -> None:
+    def _send(
+        self, status: int, body: bytes, content_type: str, cache: bool = False
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))

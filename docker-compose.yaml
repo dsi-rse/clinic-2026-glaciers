@@ -20,6 +20,9 @@ services:
   # tasks get configured too.
   labelstudio:
     image: heartexlabs/label-studio:1.23.0
+    # A real init as PID 1 forwards `docker compose stop`'s SIGTERM, so the server exits
+    # cleanly instead of being killed after a 10-second timeout.
+    init: true
     ports:
       - "8080:8080"
     volumes:
@@ -37,6 +40,7 @@ services:
   # without a second copy of the data. See labelstudio/tileserver/tileserver.py.
   tileserver:
     build: labelstudio/tileserver
+    init: true  # see labelstudio, above
     ports:
       - "8081:8081"
     volumes:

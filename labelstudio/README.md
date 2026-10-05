@@ -70,7 +70,14 @@ Open the **Glacier crevasse segmentation** project and click the first tile, or 
 All Tasks** to work through them back to back. The heading above each tile says which frame it
 comes from and where in the frame it is.
 
-To stop the servers: `docker compose stop labelstudio tileserver`.
+When you're done, stop both servers with:
+
+```bash
+make labelstudio-stop
+```
+
+This removes the two containers but keeps your annotations, which live in a Docker volume;
+`make labelstudio` brings everything back as you left it.
 
 ## 3. Label a tile
 

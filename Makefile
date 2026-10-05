@@ -35,7 +35,7 @@ run-notebooks: build-only
 
 # Hand-labeling with Label Studio. See labelstudio/README.md.
 labelstudio:
-	docker compose up -d labelstudio
+	docker compose up -d --build tileserver labelstudio
 	./labelstudio/setup.sh
 
 # Export the annotations to $(DATA_DIR)/labels/. The filename includes your username and a

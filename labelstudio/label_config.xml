@@ -18,6 +18,11 @@
       new stroke in the new color. Labelers must deselect (U) before switching confidence.
 -->
 <View>
+  <!-- Which frame and tile this is. Set per task by setup.sh. -->
+  <Header value="$title" size="6"/>
+  <Header size="6" underline="false"
+          value="Paint all strokes of one color, then press U before picking the next color."/>
+
   <BrushLabels name="mask" toName="image">
     <Label value="low" background="#FFC04D" hotkey="1"
            hint="Poor image quality, or you are unsure whether these pixels are a crevasse."/>

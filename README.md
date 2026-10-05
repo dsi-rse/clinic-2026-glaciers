@@ -14,11 +14,12 @@
 
 ### Docker & Make
 
-We use `docker` and `make` to run our code. There are three built-in `make` commands:
+We use `docker` and `make` to run our code. The built-in `make` commands are:
 
 * `make build-only`: This will build the image only. It is useful for testing and making changes to the Dockerfile.
 * `make run-notebooks`: This will run a jupyter server which also mounts the current directory into `\program`.
 * `make run-interactive`: This will create a container (with the current directory mounted as `\program`) and loads an interactive session. 
+* `make labelstudio`, `make labelstudio-export`, `make labelstudio-stop`: Start, export from, and stop the Label Studio instance for hand-labeling crevasses in the NISAR images. See [`labelstudio/README.md`](labelstudio/README.md).
 
 The file `Makefile` contains information about about the specific commands that are run using when calling each `make` statement.
 
@@ -57,13 +58,18 @@ The key files are:
 2. Copy this template into the file and fill in your logic:
 
 ```python
+"""Strategy that does XYZ."""
+
 from typing import Any
+
 from utils.inference import InferenceStrategy
+
 
 class MyStrategy(InferenceStrategy):
     """One sentence describing what this strategy does."""
 
-    def do_inference(self, inference_input: Any) -> dict[str, Any]:
+    def do_inference(self, inference_input: Any) -> dict[str, Any]:  # noqa: ANN401
+        """Process a single input and return results."""
         # Write your logic here.
         # inference_input is one item from your dataset.
         # Return a dict with your results, e.g.:
@@ -169,13 +175,18 @@ Evaluators live in `src/utils/evaluators/`. Each evaluator scores a single predi
 2. Use this template:
 
 ```python
+"""Evaluator that measures XYZ."""
+
 from typing import Any
+
 from utils.evaluation import AbstractEvaluator
+
 
 class MyEvaluator(AbstractEvaluator):
     """One sentence describing what this evaluator measures."""
 
-    def evaluate_single_output(self, predicted: Any, actual: Any) -> dict[str, Any]:
+    def evaluate_single_output(self, predicted: Any, actual: Any) -> dict[str, Any]:  # noqa: ANN401
+        """Compare one prediction with the correct answer."""
         # Compare predicted to actual. Return a dict of scores.
         return {
             "is_correct": predicted == actual,

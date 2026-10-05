@@ -130,7 +130,7 @@ the image file.
 | Fit whole image / actual size | `Shift`+`1` / `Shift`+`2` |
 | Undo / redo | `Ctrl`/`⌘` + `Z` / `Ctrl`/`⌘` + `Shift` + `Z` |
 | Delete selected region | `Backspace` |
-| Deselect region | `U` |
+| Deselect region (press before switching colors) | `U` |
 | Show/hide all masks | `Ctrl`/`⌘` + `H` |
 | Submit | `Ctrl`/`⌘` + `Enter` |
 
@@ -144,9 +144,10 @@ Behaviors worth knowing:
   confidence on purpose: click it, then press the right number.) There is no setting to turn
   this off; "Select region after creating it" in the labeling settings doesn't affect
   brushes.
-- **The eraser (`E`) erases from the selected region.** Click the stroke you want to trim (or
+- **The eraser (`E`) erases from the selected region.** Click the region you want to trim (or
   pick it in the Regions panel), then erase. Erased pixels go back to "not a crevasse".
-  To remove a whole stroke, select it and press `Backspace`.
+  `Backspace` deletes the whole selected region — if you painted by color, that is *every*
+  stroke of that color on the tile, so to remove one stroke, erase it or undo it instead.
 - **The magic wand (`W`)** grows a selection from pixels of similar brightness. On
   high-contrast images it can fill a whole crevasse from one click; on noisy ones it bleeds.
   Try it, keep it if it helps.
@@ -163,7 +164,7 @@ If you think something might be a crevasse but can't tell even at high contrast,
 
 ### What the confidence means
 
-Confidence is per stroke, not per tile: it says how sure you are that *these pixels* are a
+Confidence is per crevasse, not per tile: it says how sure you are that *these pixels* are a
 crevasse. Use the same standard as everyone else on the team, so the ratings are comparable:
 
 | Label | Use it when |
@@ -185,8 +186,8 @@ This writes a timestamped file to `$DATA_DIR/labels/`, named with your username 
 members never overwrite each other.
 
 **Export often.** Your annotations live inside a Docker volume, not in this repository.
-Stopping the container is safe, but `docker compose down -v` deletes the volume and every
-unexported label with it.
+Stopping with `make labelstudio-stop` is safe, but `docker compose down -v` deletes the volume
+and every unexported label with it.
 
 Only tiles you have submitted appear in the export.
 
@@ -282,7 +283,7 @@ relabels it. Undo with `Ctrl`/`⌘` + `Z`, press `U`, then pick the label.
 one color at a time (§3) so that a tile has about three regions, or use a smaller
 `TILESERVER_TILE_SIZE`.
 
-**The eraser doesn't erase.** No region is selected. Click the stroke first, then erase.
+**The eraser doesn't erase.** No region is selected. Click the region first, then erase.
 
 **`make labelstudio` fails with an error about annotations being incompatible with the
 labeling config.** You have annotations from an older version of `label_config.xml` (for

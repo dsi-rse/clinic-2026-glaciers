@@ -155,7 +155,7 @@ from utils.inference import InferenceStrategy
 class MyStrategy(InferenceStrategy):
     """A short description of what this strategy does."""
 
-    def do_inference(self, inference_input: Any) -> dict[str, Any]:
+    def do_inference(self, inference_input: Any) -> dict[str, Any]:  # noqa: ANN401
         """Process a single input and return results.
 
         Args:
@@ -169,6 +169,8 @@ class MyStrategy(InferenceStrategy):
 
 That's a complete, working strategy. The only method you *must* implement is
 `do_inference`. It receives one input and returns a dict with your results.
+(The `# noqa: ANN401` tells the linter that `Any` is deliberate here: a strategy can take any
+kind of input. Replace `Any` with a real type once you know what your inputs are.)
 
 ### Adding configurable parameters
 
@@ -182,7 +184,7 @@ class MyStrategy(InferenceStrategy):
     def __init__(self, threshold=0.5):
         self.threshold = threshold
 
-    def do_inference(self, inference_input: Any) -> dict[str, Any]:
+    def do_inference(self, inference_input: Any) -> dict[str, Any]:  # noqa: ANN401
         """Process a single input and return results.
 
         Args:

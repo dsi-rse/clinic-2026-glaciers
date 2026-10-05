@@ -30,9 +30,10 @@ if [ -z "${DATA_DIR:-}" ]; then
   exit 1
 fi
 
-# Resolve DATA_DIR the same way src/utils/settings.py does: expand a leading ~, and treat a
+# Resolve DATA_DIR the same way src/utils/settings.py does: expand a leading ~ or ${HOME}, and treat a
 # relative path as relative to the repository root rather than the current directory.
 out_dir="${DATA_DIR/#\~/$HOME}"
+out_dir="${out_dir/#\$\{HOME\}/$HOME}"
 out_dir="${out_dir%/}"
 case "$out_dir" in /*) ;; *) out_dir="$ROOT/${out_dir#./}" ;; esac
 export LS_OUT_DIR="$out_dir/labels"

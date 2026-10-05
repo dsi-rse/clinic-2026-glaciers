@@ -12,17 +12,18 @@ Everything is preconfigured. You should not have to click through any setup scre
 
 ## 1. Put the images where Label Studio can find them
 
-The images are NISAR L2 GCOV radar frames, as HDF5 (`.h5`) files. They go in an `images/`
-subdirectory of your `DATA_DIR` (subdirectories below that are fine too):
+The images are NISAR L2 GCOV radar frames, as HDF5 (`.h5`) files. By default, every `.h5`
+file in your `DATA_DIR` is used, including ones in subdirectories:
 
 ```
 $DATA_DIR/
-└── images/          <- .h5 files here
+├── frame.h5         <- .h5 files here
+└── nisar_data/      <- and in here
 ```
 
-`DATA_DIR` is set in your `.env` file (copy `.env.example` to `.env` if you haven't yet). If
-your images live in a differently-named subdirectory, set `LABELSTUDIO_IMAGE_SUBDIR` in `.env`
-instead of renaming anything.
+`DATA_DIR` is set in your `.env` file (copy `.env.example` to `.env` if you haven't yet). To
+use only the frames in one subdirectory, set `LABELSTUDIO_IMAGE_SUBDIR` in `.env` (for example,
+`LABELSTUDIO_IMAGE_SUBDIR=nisar_data`).
 
 ### How a frame becomes something you can label
 
@@ -60,10 +61,11 @@ Then open **<http://localhost:8080>** and log in:
 
 | | |
 |---|---|
-| Username | `student@uchicago.edu` |
+| Username | `labeler@example.com` |
 | Password | `glaciers2026` |
 
-These are defaults for a server that only listens on your own machine; override them with
+These are public defaults, which is fine because the server only accepts connections from your
+own machine (`127.0.0.1` in `docker-compose.yaml`). Override them with
 `LABELSTUDIO_USERNAME` and `LABELSTUDIO_PASSWORD` in `.env` if you like.
 
 Open the **Glacier crevasse segmentation** project and click the first tile, or use **Label
@@ -245,7 +247,7 @@ The mask is in the tile's own pixel coordinates. Its pixel `[i, j]` is pixel
 import h5py
 
 d = task["data"]
-with h5py.File(f"{DATA_DIR}/images/{d['source_file']}") as f:
+with h5py.File(f"{DATA_DIR}/{d['source_file']}") as f:
     hhhh = f["science/LSAR/GCOV/grids/frequencyA/HHHH"][d["y0"] : d["y0"] + h, d["x0"] : d["x0"] + w]
 # hhhh.shape == mask.shape
 ```
@@ -292,7 +294,7 @@ you want them (`make labelstudio-export`), then `docker compose down -v` and
 `make labelstudio` again.
 
 **The project is empty.** Your `.h5` files aren't where the tile server is looking. They
-must be in `$DATA_DIR/images/` (or whatever `LABELSTUDIO_IMAGE_SUBDIR` says). Fix the
+must be in `$DATA_DIR` (or in `$DATA_DIR/$LABELSTUDIO_IMAGE_SUBDIR`, if you set that). Fix the
 location, then re-run `make labelstudio`. `docker compose logs tileserver` lists any file it
 skipped, and why (for example, a file without `frequencyA/HHHH`).
 
@@ -306,7 +308,7 @@ frame once (see §2). `docker compose logs -f tileserver` shows which frame it i
 
 **`make labelstudio` fails on the `DATA_DIR` mount.** Docker Compose does not expand a leading
 `~` in `.env`, even though the Python code in `src/utils/settings.py` does. Use a full absolute
-path (`/Users/you/...`) or a `./relative/` one.
+path (`/Users/you/...`), one that starts with `${HOME}` (`${HOME}/Box/...`), or a `./relative/` one.
 
 **Port 8080 or 8081 is already in use.** Something else is on that port. Stop it, or change
 the published port in `docker-compose.yaml` and set `LABELSTUDIO_URL` (8080) or

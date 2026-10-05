@@ -34,7 +34,7 @@ import h5py
 import numpy as np
 from PIL import Image
 
-IMAGE_DIR = Path(os.environ.get("IMAGE_DIR", "/data/images"))
+IMAGE_DIR = Path(os.environ.get("IMAGE_DIR", "/data"))
 CACHE_DIR = Path(os.environ.get("CACHE_DIR", "/cache"))
 PORT = int(os.environ.get("PORT", "8081"))
 # Valid pixels are counted per BLOCK x BLOCK block, which can be summed into tiles of any size

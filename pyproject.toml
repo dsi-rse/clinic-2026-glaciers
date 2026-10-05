@@ -15,6 +15,8 @@ dependencies = [
   "seaborn~=0.13",
   "tqdm~=4.67",
   "python-dotenv~=1.0.0",
+  "h5py~=3.12",
+  "pillow~=12.0",
   
 ]
 
@@ -64,6 +66,8 @@ ignore = [
   "ANN003", # missing type on **kwargs
   "B905",   # won't work on python <3.10
   "S101",   # allow assertions
+  "ANN101", # missing type on self (deprecated in ruff, removed in 0.8)
+  "ANN102", # missing type on cls (deprecated in ruff, removed in 0.8)
 ]
 
 [tool.ruff.lint.pydocstyle]

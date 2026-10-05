@@ -1,4 +1,5 @@
 """Evaluator for binary or multi-class classification tasks."""
+
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -11,7 +12,7 @@ from utils.evaluation import AbstractEvaluator, EvaluationStatus
 class ClassifierEvaluator(AbstractEvaluator):
     """Evaluator for classification tasks. Produces a confusion matrix plot."""
 
-    def evaluate_single_output(self, predicted: Any, actual: Any) -> dict[str, Any]:
+    def evaluate_single_output(self, predicted: Any, actual: Any) -> dict[str, Any]:  # noqa: ANN401
         """Compare a single predicted label against the actual label."""
         return {
             "predicted": predicted,
@@ -22,14 +23,17 @@ class ClassifierEvaluator(AbstractEvaluator):
     def make_plots(self, evaluation_results: dict[str, Any]) -> dict[str, plt.Figure]:
         """Return a confusion matrix heatmap for all evaluated outputs."""
         evaluated = [
-            v for v in evaluation_results.values()
+            v
+            for v in evaluation_results.values()
             if v["status"] == EvaluationStatus.INCLUDED
         ]
         if not evaluated:
             return {}
 
-        df = pd.DataFrame(evaluated)
-        matrix = df.groupby(["actual", "predicted"]).size().unstack(fill_value=0)
+        pairs = pd.DataFrame(evaluated)
+        matrix = pairs.pivot_table(
+            index="actual", columns="predicted", aggfunc="size", fill_value=0
+        )
 
         fig, ax = plt.subplots()
         sns.heatmap(matrix, annot=True, fmt="d", cmap="Blues", ax=ax)

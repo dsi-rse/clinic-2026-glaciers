@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Create (or update) the Label Studio project for glacier crevasse segmentation.
 #
-# Safe to re-run: it reuses an existing project and storage instead of duplicating them, so
-# `make labelstudio` calls it on every start. Run it again after you add images to
+# Every tile of every HDF5 frame in $DATA_DIR/images/ becomes one task. The tiles themselves
+# are rendered on request by the tileserver container (tileserver/tileserver.py); a task only
+# holds the tile's URL.
+#
+# Safe to re-run: it reuses an existing project and only adds tiles it hasn't added before, so
+# `make labelstudio` calls it on every start. Run it again after you add frames to
 # $DATA_DIR/images/ or edit label_config.xml.
 #
 # Requires: docker (running), python3 (any version 3.8+; only the standard library is used).
@@ -29,9 +33,8 @@ export LS_URL="${LABELSTUDIO_URL:-http://localhost:8080}"
 export LS_TOKEN="${LABELSTUDIO_TOKEN:-clinic2026glaciersdevtoken}"
 export LS_IMAGE_SUBDIR="${LABELSTUDIO_IMAGE_SUBDIR:-images}"
 export LS_CONFIG_FILE="$HERE/label_config.xml"
-# Where DATA_DIR is mounted inside the container, per docker-compose.yaml. Only worth
-# changing if you are running Label Studio outside of Docker.
-export LS_FILES_ROOT="${LABELSTUDIO_FILES_ROOT:-/label-studio/files}"
+# The tile server as your browser sees it. Tasks store image URLs under this address.
+export LS_TILESERVER_URL="${TILESERVER_URL:-http://localhost:8081}"
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required to run this script but was not found on your PATH." >&2
@@ -44,19 +47,14 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 URL = os.environ["LS_URL"].rstrip("/")
 TOKEN = os.environ["LS_TOKEN"]
 IMAGE_SUBDIR = os.environ["LS_IMAGE_SUBDIR"]
+TILES = os.environ["LS_TILESERVER_URL"].rstrip("/")
 TITLE = "Glacier crevasse segmentation"
-
-# Label Studio only serves a local file if some storage's path is a prefix of that file's
-# directory, and it requires that path to be a strict subdirectory of the document root.
-# The document root is DATA_DIR (mounted read-only at /label-studio/files), so the images
-# have to live one level down, in $DATA_DIR/$LABELSTUDIO_IMAGE_SUBDIR.
-STORAGE_PATH = f"{os.environ['LS_FILES_ROOT'].rstrip('/')}/{IMAGE_SUBDIR}"
-IMAGE_REGEX = r".*\.(png|jpg|jpeg|tif|tiff|PNG|JPG|JPEG|TIF|TIFF)$"
 
 
 def api(path, payload=None, method=None):
@@ -76,17 +74,51 @@ def api(path, payload=None, method=None):
     return json.loads(body) if body else None
 
 
-def wait_for_server():
-    print(f"Waiting for Label Studio at {URL} ...")
+def wait_for(name, url, service):
+    print(f"Waiting for {name} at {url} ...")
     for _ in range(90):
         try:
-            with urllib.request.urlopen(f"{URL}/health", timeout=5):
+            with urllib.request.urlopen(f"{url}/health", timeout=5):
                 return
         except Exception:
             time.sleep(2)
     sys.exit(
-        "Label Studio did not come up in 3 minutes.\n"
-        "Check it with:  docker compose logs labelstudio"
+        f"{name} did not come up in 3 minutes.\n"
+        f"Check it with:  docker compose logs {service}"
+    )
+
+
+def tile_index():
+    """Every tile with data. Slow the first time a frame is seen: it is scanned once."""
+    try:
+        # An hour: a big frame takes a minute or two to scan on a laptop, and there may be many.
+        with urllib.request.urlopen(f"{TILES}/index", timeout=3600) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        sys.exit(f"Tile server /index failed with HTTP {exc.code}\n{exc.read().decode(errors='replace')}")
+    except urllib.error.URLError as exc:
+        sys.exit(f"Could not reach the tile server at {TILES}: {exc.reason}")
+
+
+def existing_tasks(pid):
+    found, page = [], 1
+    while True:
+        # fields=all includes draft_exists, which (unlike "drafts") counts every user's drafts.
+        response = api(f"/api/tasks/?project={pid}&fields=all&page_size=500&page={page}")
+        tasks = response if isinstance(response, list) else response.get("tasks", [])
+        found.extend(tasks)
+        total = None if isinstance(response, list) else response.get("total")
+        if not tasks or total is None or len(found) >= total:
+            return found
+        page += 1
+
+
+def untouched(task):
+    """No annotation, skip, or draft by anyone. Missing fields count as touched, to be safe."""
+    return (
+        task.get("total_annotations", 1) == 0
+        and task.get("cancelled_annotations", 1) == 0
+        and task.get("draft_exists", True) is False
     )
 
 
@@ -97,14 +129,15 @@ def as_list(response):
     return response.get("results", [])
 
 
-wait_for_server()
+wait_for("Label Studio", URL, "labelstudio")
+wait_for("the tile server", TILES, "tileserver")
 
 with open(os.environ["LS_CONFIG_FILE"]) as handle:
     label_config = handle.read()
 
 project_payload = {
     "title": TITLE,
-    "description": "Hand-drawn crevasse masks with a per-image confidence rating.",
+    "description": "Hand-drawn crevasse masks, painted in three shades of orange for low, medium, and high confidence.",
     "label_config": label_config,
 }
 
@@ -118,35 +151,51 @@ else:
     pid = api("/api/projects/", project_payload)["id"]
     print(f"Created project {pid}: {TITLE}")
 
-storages = as_list(api(f"/api/storages/localfiles/?project={pid}"))
-storage = next((s for s in storages if s.get("path") == STORAGE_PATH), None)
-if storage:
-    sid = storage["id"]
-    print(f"Reusing local storage {sid} -> {STORAGE_PATH}")
-else:
-    sid = api(
-        "/api/storages/localfiles/",
-        {
-            "project": pid,
-            "title": "images",
-            "path": STORAGE_PATH,
-            "use_blob_urls": True,
-            "recursive_scan": True,
-            "regex_filter": IMAGE_REGEX,
-        },
-    )["id"]
-    print(f"Created local storage {sid} -> {STORAGE_PATH}")
+print(f"Indexing HDF5 frames in $DATA_DIR/{IMAGE_SUBDIR}/ ...")
+print("  (each new frame is scanned once to find its display range; ~10 s to a few minutes)")
+tiles = tile_index()
+frames = sorted({t["file"] for t in tiles})
+print(f"Found {len(tiles)} tiles with data in {len(frames)} frame(s)")
 
-print(f"Syncing images from $DATA_DIR/{IMAGE_SUBDIR} ...")
-api(f"/api/storages/localfiles/{sid}/sync", {})
-time.sleep(2)
+wanted = {}
+for t in tiles:
+    image = f"{TILES}/tile/{urllib.parse.quote(t['file'])}/{t['tile_size']}/{t['row']}/{t['col']}.png"
+    granule = t["file"].rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    wanted[image] = {
+        "image": image,
+        "title": f"{granule}  ({t['tile_size']} px tile, row {t['row']}, col {t['col']})",
+        "source_file": t["file"],
+        "tile_size": t["tile_size"],
+        "tile_row": t["row"],
+        "tile_col": t["col"],
+        "x0": t["x0"],
+        "y0": t["y0"],
+    }
+
+# Tasks for tiles the tile server no longer offers: from a different TILESERVER_TILE_SIZE, or
+# from a frame that was removed. Untouched ones are deleted; anything someone has worked on is
+# kept, and still displays correctly, because its URL includes its own tile size.
+existing = existing_tasks(pid)
+have = {t["data"].get("image") for t in existing}
+stale = [t for t in existing if t["data"].get("image") not in wanted]
+removed = [t for t in stale if untouched(t)]
+for t in removed:
+    api(f"/api/tasks/{t['id']}/", method="DELETE")
+if removed:
+    print(f"Removed {len(removed)} unlabeled task(s) for tiles that are no longer offered")
+if len(stale) > len(removed):
+    print(f"Kept {len(stale) - len(removed)} older task(s) that have labels or drafts")
+
+new_tasks = [{"data": data} for image, data in wanted.items() if image not in have]
+for start in range(0, len(new_tasks), 500):
+    api(f"/api/projects/{pid}/import", new_tasks[start : start + 500])
+print(f"Added {len(new_tasks)} new tile(s); {len(wanted) - len(new_tasks)} were already loaded")
 
 count = api(f"/api/projects/{pid}/")["task_number"]
 print()
-print(f"Images loaded: {count}")
+print(f"Tiles to label: {count}")
 if not count:
     print()
-    print(f"No images found. Put your PNGs in $DATA_DIR/{IMAGE_SUBDIR}/ and run this again,")
-    print("or press 'Sync Storage' in the project's Cloud Storage settings.")
+    print(f"No HDF5 frames found. Put your .h5 files in $DATA_DIR/{IMAGE_SUBDIR}/ and run this again.")
 print(f"Label here: {URL}/projects/{pid}/data")
 PYEOF

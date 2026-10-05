@@ -4,6 +4,7 @@ Provides ``discover_subclasses`` and ``get_subclass`` which scan a Python
 package for concrete subclasses of a given base class.  Used by both the
 inference and evaluation modules to avoid duplicating discovery logic.
 """
+
 import importlib
 import inspect
 import pkgutil
@@ -29,9 +30,7 @@ def discover_subclasses(package: ModuleType, base_class: type) -> dict[str, type
     """
     found: dict[str, type] = {}
     for _importer, modname, _ispkg in pkgutil.iter_modules(package.__path__):
-        module = importlib.import_module(
-            f".{modname}", package=package.__name__
-        )
+        module = importlib.import_module(f".{modname}", package=package.__name__)
         for name, obj in inspect.getmembers(module, inspect.isclass):
             if (
                 issubclass(obj, base_class)
@@ -48,7 +47,9 @@ def discover_subclasses(package: ModuleType, base_class: type) -> dict[str, type
     return found
 
 
-def get_subclass(name: str, package: ModuleType, base_class: type, label: str = "class") -> type:
+def get_subclass(
+    name: str, package: ModuleType, base_class: type, label: str = "class"
+) -> type:
     """Look up a single concrete subclass by name.
 
     Args:
@@ -66,7 +67,5 @@ def get_subclass(name: str, package: ModuleType, base_class: type, label: str = 
     registry = discover_subclasses(package, base_class)
     if name not in registry:
         available = ", ".join(sorted(registry.keys())) or "(none)"
-        raise KeyError(
-            f"No {label} named '{name}'. Available: {available}"
-        )
+        raise KeyError(f"No {label} named '{name}'. Available: {available}")
     return registry[name]

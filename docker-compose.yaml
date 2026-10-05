@@ -17,16 +17,17 @@ services:
 
   # Label Studio, for hand-labeling the images. See labelstudio/README.md.
   # Start it with `make labelstudio`, not `docker compose up`, so that the project and its
-  # image storage get configured too.
+  # tasks get configured too.
   labelstudio:
     image: heartexlabs/label-studio:1.23.0
+    # A real init as PID 1 forwards `docker compose stop`'s SIGTERM, so the server exits
+    # cleanly instead of being killed after a 10-second timeout.
+    init: true
     ports:
       - "8080:8080"
     volumes:
       # Annotations live in this named volume. `docker compose down -v` deletes them.
       - labelstudio-state:/label-studio/data
-      # The images, read-only: labeling never needs to write to shared data.
-      - ${DATA_DIR}:/label-studio/files:ro
     environment:
       LABEL_STUDIO_USERNAME: ${LABELSTUDIO_USERNAME:-student@uchicago.edu}
       LABEL_STUDIO_PASSWORD: ${LABELSTUDIO_PASSWORD:-glaciers2026}
@@ -34,9 +35,23 @@ services:
       # start without anyone copying a token out of the web UI.
       LABEL_STUDIO_USER_TOKEN: ${LABELSTUDIO_TOKEN:-clinic2026glaciersdevtoken}
       LABEL_STUDIO_ENABLE_LEGACY_API_TOKEN: "true"
-      # Serve the images straight out of DATA_DIR instead of copying them into Label Studio.
-      LOCAL_FILES_SERVING_ENABLED: "true"
-      LOCAL_FILES_DOCUMENT_ROOT: /label-studio/files
+
+  # Renders the HDF5 frames in DATA_DIR as PNG tiles on request, so Label Studio can show them
+  # without a second copy of the data. See labelstudio/tileserver/tileserver.py.
+  tileserver:
+    build: labelstudio/tileserver
+    init: true  # see labelstudio, above
+    ports:
+      - "8081:8081"
+    volumes:
+      # The data, read-only: labeling never needs to write to shared data.
+      - ${DATA_DIR}:/data:ro
+      # A few KB per frame: its display range and which tiles have data.
+      - tileserver-cache:/cache
+    environment:
+      IMAGE_DIR: /data/${LABELSTUDIO_IMAGE_SUBDIR:-images}
+      TILE_SIZE: ${TILESERVER_TILE_SIZE:-4096}
 
 volumes:
   labelstudio-state:
+  tileserver-cache:

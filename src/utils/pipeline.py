@@ -3,6 +3,7 @@
 These functions are the primary entry-points for students, usable both
 from notebooks and from the CLI.
 """
+
 import json
 import logging
 from collections import Counter
@@ -11,11 +12,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from tqdm import tqdm
+
 from utils.evaluation import get_evaluator
 from utils.inference import InferenceStatus, get_inference_strategy
 from utils.io import load_inputs, load_outputs, save_outputs
 from utils.settings import DATA_DIR
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +55,9 @@ def run_inference(
     # Run inference on each input
     outputs: dict[str, Any] = {}
     statuses: dict[str, InferenceStatus] = {}
-    for key, value in tqdm(inputs.items(), desc=f"Running {strategy_name}", unit="input"):
+    for key, value in tqdm(
+        inputs.items(), desc=f"Running {strategy_name}", unit="input"
+    ):
         result, status = strategy.do_inference_safe(value)
         statuses[key] = status
         if result is not None:

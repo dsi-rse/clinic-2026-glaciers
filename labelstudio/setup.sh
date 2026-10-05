@@ -104,7 +104,7 @@ with open(os.environ["LS_CONFIG_FILE"]) as handle:
 
 project_payload = {
     "title": TITLE,
-    "description": "Hand-drawn crevasse masks with a per-image confidence rating.",
+    "description": "Hand-drawn crevasse masks, painted in three shades of orange for low, medium, and high confidence.",
     "label_config": label_config,
 }
 

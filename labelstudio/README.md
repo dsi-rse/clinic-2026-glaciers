@@ -1,8 +1,10 @@
 # Hand-labeling glacier images with Label Studio
 
 This directory runs a local [Label Studio](https://labelstud.io) instance for drawing
-segmentation masks of crevasses, plus a confidence rating for each image. The masks you
-produce here are the training data for the image-recognition model.
+segmentation masks of crevasses. The mask itself records your confidence: you paint in one of
+three shades of orange (light = low, medium = medium, dark = high), and anything left
+unpainted means "not a crevasse". The masks you produce here are the training data for the
+image-recognition model.
 
 Everything is preconfigured. You should not have to click through any setup screens.
 
@@ -53,9 +55,15 @@ To stop the server: `docker compose stop labelstudio`.
 
 ## 3. Label an image
 
-**Select the `crevasse` label first** — click the red chip above the image or press `1`.
-Until a label is selected the brush silently does nothing, which looks exactly like a broken
-tool.
+**Select a confidence label first** — click one of the orange chips above the image, or press
+`1` (low), `2` (medium), or `3` (high). Until a label is selected the brush silently does
+nothing, which looks exactly like a broken tool.
+
+| Label | Key | Color |
+|---|---|---|
+| `low` | `1` | light orange |
+| `medium` | `2` | medium orange |
+| `high` | `3` | dark orange |
 
 Then, in this order:
 
@@ -65,10 +73,10 @@ Then, in this order:
 2. **Zoom to 200–400%.** At 100% a crevasse can be one or two pixels wide, which is too small
    to trace accurately.
 3. **Set a small brush** (`[` and `]`) — roughly 4–8 pixels.
-4. **Drag along each crevasse**, following its curve. Release and start a new drag for the next
-   one.
-5. **Choose a confidence** (`7`, `8`, or `9`). This is required; Submit stays blocked until you
-   pick one.
+4. **Drag along each crevasse**, following its curve, in the color that matches your
+   confidence for *that* crevasse. Release and start a new drag for the next one. One image
+   can (and usually will) mix all three colors.
+5. **To switch confidence, press `U` first**, then `1`/`2`/`3`. See the warning below.
 6. **Submit** (`Ctrl`/`⌘` + `Enter`). Label Studio moves to the next image.
 
 The contrast and brightness sliders only change what you see. They never alter your mask or
@@ -78,10 +86,9 @@ the image file.
 
 | Action | Key |
 |---|---|
-| Select the `crevasse` label | `1` |
-| Confidence: low / medium / high | `7` / `8` / `9` |
+| Select label: low / medium / high | `1` / `2` / `3` |
 | Brush tool | `B` |
-| Eraser | `E` |
+| Eraser (erases from the selected region) | `E` |
 | Smaller / bigger brush | `[` / `]` |
 | Magic wand | `W` |
 | Pan the image | `H`, then drag |
@@ -93,11 +100,17 @@ the image file.
 | Show/hide all masks | `Ctrl`/`⌘` + `H` |
 | Submit | `Ctrl`/`⌘` + `Enter` |
 
-Two behaviors worth knowing:
+Behaviors worth knowing:
 
-- **Painting while a region is selected extends that region** instead of making a new one. With
-  a single class this makes no difference to the result, so don't fight it. Press `U` first if
-  you want each crevasse as a separate region.
+- **Picking a label while a region is selected relabels that region.** If you just painted a
+  `low` stroke (it stays selected) and press `3`, the whole stroke turns dark orange — it does
+  *not* start a new `high` stroke. Likewise, painting while a region is selected extends that
+  region in its own color. So **always press `U` (deselect) before switching confidence.** If
+  you relabel something by accident, `Ctrl`/`⌘` + `Z` undoes it. (This also means you can fix
+  a stroke's confidence on purpose: click it, then press the right number.)
+- **The eraser (`E`) erases from the selected region.** Click the stroke you want to trim (or
+  pick it in the Regions panel), then erase. Erased pixels go back to "not a crevasse".
+  To remove a whole stroke, select it and press `Backspace`.
 - **The magic wand (`W`)** grows a selection from pixels of similar brightness. On
   high-contrast images it can fill a whole crevasse from one click; on noisy ones it bleeds.
   Try it, keep it if it helps.
@@ -110,21 +123,22 @@ whole crevasse field.
 Do not label the background outside the ice, and do not label any text, borders, or color bars
 that were burned into the image when it was generated.
 
-If you cannot tell whether something is a crevasse even at high contrast, leave it out and drop
-your confidence rating.
+If you think something might be a crevasse but can't tell even at high contrast, paint it
+`low` rather than leaving it out.
 
 ### What the confidence means
 
-Use the same standard as everyone else on the team, so the ratings are comparable:
+Confidence is per stroke, not per image: it says how sure you are that *these pixels* are a
+crevasse. Use the same standard as everyone else on the team, so the ratings are comparable:
 
-| Rating | Use it when |
+| Label | Use it when |
 |---|---|
-| `high` | The crevasses are unambiguous and you believe your mask covers all of them. |
-| `medium` | Mostly clear, but you made judgment calls, or there are faint features you may have missed. |
-| `low` | The image quality is poor, or you are genuinely unsure what counts as a crevasse here. |
+| `high` | The crevasse is unambiguous. |
+| `medium` | Mostly clear, but a judgment call, or a faint feature. |
+| `low` | The image quality is poor here, or you are genuinely unsure whether it is a crevasse. |
 
-A `low` rating is useful information, not an admission of failure — it tells us which labels to
-weight less or revisit. Label the image as best you can and mark it `low`.
+A `low` label is useful information, not an admission of failure — it tells us which pixels to
+weight less or revisit. Paint what you see and mark it `low`.
 
 ## 4. Export your labels
 
@@ -143,8 +157,8 @@ Only images you have submitted appear in the export.
 
 ### What the export looks like
 
-One JSON object per labeled image. Each `annotations[].result` array holds your mask and your
-confidence as two sibling entries:
+One JSON object per labeled image. Each `annotations[].result` array holds one `brushlabels`
+entry per region, and each region's label is its confidence:
 
 ```json
 {
@@ -153,30 +167,37 @@ confidence as two sibling entries:
     "result": [
       { "type": "brushlabels", "from_name": "mask",
         "original_width": 420, "original_height": 420,
-        "value": { "format": "rle", "rle": [ ... ], "brushlabels": ["crevasse"] } },
-      { "type": "choices", "from_name": "confidence",
-        "value": { "choices": ["high"] } }
+        "value": { "format": "rle", "rle": [ ... ], "brushlabels": ["high"] } },
+      { "type": "brushlabels", "from_name": "mask",
+        "original_width": 420, "original_height": 420,
+        "value": { "format": "rle", "rle": [ ... ], "brushlabels": ["low"] } }
     ]
   }]
 }
 ```
 
-Masks are run-length encoded. To get a numpy array back:
+Masks are run-length encoded. To get one numpy array per image, with 0 = not a crevasse,
+1 = low, 2 = medium, 3 = high:
 
 ```python
 import json
 import numpy as np
 from label_studio_sdk.converter.brush import decode_rle
 
+LEVEL = {"low": 1, "medium": 2, "high": 3}
+
 task = json.load(open("labels-....json"))[0]
-region = next(r for r in task["annotations"][0]["result"] if r["type"] == "brushlabels")
-h, w = region["original_height"], region["original_width"]
-mask = np.array(decode_rle(region["value"]["rle"]), dtype=np.uint8).reshape(h, w, 4)[:, :, 3]
-# mask > 0 is the binary crevasse mask
+regions = [r for r in task["annotations"][0]["result"] if r["type"] == "brushlabels"]
+h, w = regions[0]["original_height"], regions[0]["original_width"]
+mask = np.zeros((h, w), dtype=np.uint8)
+for region in regions:
+    alpha = np.array(decode_rle(region["value"]["rle"]), dtype=np.uint8).reshape(h, w, 4)[:, :, 3]
+    level = LEVEL[region["value"]["brushlabels"][0]]
+    mask = np.maximum(mask, np.where(alpha > 0, level, 0).astype(np.uint8))
 ```
 
-Several brush strokes on one image arrive as several `brushlabels` entries — OR them together
-for a single mask per image.
+Several brush strokes on one image arrive as several `brushlabels` entries. Where strokes of
+different confidence overlap, `np.maximum` keeps the higher one.
 
 ## 5. Changing the label classes
 
@@ -191,9 +212,18 @@ labeling push, not during one.
 
 ## Troubleshooting
 
-**The brush doesn't draw anything.** No label is selected. Press `1`.
+**The brush doesn't draw anything.** No label is selected. Press `1`, `2`, or `3`.
 
-**Submit does nothing.** You haven't chosen a confidence rating. Press `7`, `8`, or `9`.
+**A whole stroke changed color.** You picked a label while that stroke was selected, which
+relabels it. Undo with `Ctrl`/`⌘` + `Z`, press `U`, then pick the label.
+
+**The eraser doesn't erase.** No region is selected. Click the stroke first, then erase.
+
+**`make labelstudio` fails with an error about annotations being incompatible with the
+labeling config.** You have annotations from an older version of `label_config.xml` (for
+example the earlier single-`crevasse` label with a separate confidence rating). Export them if
+you want them (`make labelstudio-export`), then `docker compose down -v` and
+`make labelstudio` again.
 
 **Images are broken or the project is empty.** Your images aren't where Label Studio is
 looking. They must be in `$DATA_DIR/images/` (or whatever `LABELSTUDIO_IMAGE_SUBDIR` says).

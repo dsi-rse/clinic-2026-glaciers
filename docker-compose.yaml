@@ -24,12 +24,12 @@ services:
     # cleanly instead of being killed after a 10-second timeout.
     init: true
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"  # only reachable from this machine
     volumes:
       # Annotations live in this named volume. `docker compose down -v` deletes them.
       - labelstudio-state:/label-studio/data
     environment:
-      LABEL_STUDIO_USERNAME: ${LABELSTUDIO_USERNAME:-student@uchicago.edu}
+      LABEL_STUDIO_USERNAME: ${LABELSTUDIO_USERNAME:-labeler@example.com}
       LABEL_STUDIO_PASSWORD: ${LABELSTUDIO_PASSWORD:-glaciers2026}
       # Presets the API token so labelstudio/setup.sh can configure the project on a cold
       # start without anyone copying a token out of the web UI.
@@ -42,14 +42,14 @@ services:
     build: labelstudio/tileserver
     init: true  # see labelstudio, above
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"  # only reachable from this machine
     volumes:
       # The data, read-only: labeling never needs to write to shared data.
       - ${DATA_DIR}:/data:ro
       # A few KB per frame: its display range and which tiles have data.
       - tileserver-cache:/cache
     environment:
-      IMAGE_DIR: /data/${LABELSTUDIO_IMAGE_SUBDIR:-images}
+      IMAGE_DIR: /data/${LABELSTUDIO_IMAGE_SUBDIR:-}
       TILE_SIZE: ${TILESERVER_TILE_SIZE:-4096}
 
 volumes:

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Create (or update) the Label Studio project for glacier crevasse segmentation.
 #
-# Every tile of every HDF5 frame in $DATA_DIR/images/ becomes one task. The tiles themselves
+# Every tile of every HDF5 frame in $DATA_DIR (or $DATA_DIR/$LABELSTUDIO_IMAGE_SUBDIR, if set,
+# and any subdirectories below it) becomes one task. The tiles themselves
 # are rendered on request by the tileserver container (tileserver/tileserver.py); a task only
 # holds the tile's URL.
 #
 # Safe to re-run: it reuses an existing project and only adds tiles it hasn't added before, so
 # `make labelstudio` calls it on every start. Run it again after you add frames to
-# $DATA_DIR/images/ or edit label_config.xml.
+# $DATA_DIR or edit label_config.xml.
 #
 # Requires: docker (running), python3 (any version 3.8+; only the standard library is used).
 set -euo pipefail
@@ -31,7 +32,7 @@ if [ -f "$ROOT/.env" ]; then
 fi
 export LS_URL="${LABELSTUDIO_URL:-http://localhost:8080}"
 export LS_TOKEN="${LABELSTUDIO_TOKEN:-clinic2026glaciersdevtoken}"
-export LS_IMAGE_SUBDIR="${LABELSTUDIO_IMAGE_SUBDIR:-images}"
+export LS_IMAGE_SUBDIR="${LABELSTUDIO_IMAGE_SUBDIR:-}"
 export LS_CONFIG_FILE="$HERE/label_config.xml"
 # The tile server as your browser sees it. Tasks store image URLs under this address.
 export LS_TILESERVER_URL="${TILESERVER_URL:-http://localhost:8081}"
@@ -52,7 +53,8 @@ import urllib.request
 
 URL = os.environ["LS_URL"].rstrip("/")
 TOKEN = os.environ["LS_TOKEN"]
-IMAGE_SUBDIR = os.environ["LS_IMAGE_SUBDIR"]
+IMAGE_SUBDIR = os.environ["LS_IMAGE_SUBDIR"].strip("/")
+IMAGE_PATH = f"$DATA_DIR/{IMAGE_SUBDIR}" if IMAGE_SUBDIR else "$DATA_DIR"
 TILES = os.environ["LS_TILESERVER_URL"].rstrip("/")
 TITLE = "Glacier crevasse segmentation"
 
@@ -151,7 +153,7 @@ else:
     pid = api("/api/projects/", project_payload)["id"]
     print(f"Created project {pid}: {TITLE}")
 
-print(f"Indexing HDF5 frames in $DATA_DIR/{IMAGE_SUBDIR}/ ...")
+print(f"Indexing HDF5 frames in {IMAGE_PATH} ...")
 print("  (each new frame is scanned once to find its display range; ~10 s to a few minutes)")
 tiles = tile_index()
 frames = sorted({t["file"] for t in tiles})
@@ -196,6 +198,6 @@ print()
 print(f"Tiles to label: {count}")
 if not count:
     print()
-    print(f"No HDF5 frames found. Put your .h5 files in $DATA_DIR/{IMAGE_SUBDIR}/ and run this again.")
+    print(f"No HDF5 frames found. Put your .h5 files in {IMAGE_PATH} and run this again.")
 print(f"Label here: {URL}/projects/{pid}/data")
 PYEOF

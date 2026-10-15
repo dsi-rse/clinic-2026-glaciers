@@ -26,7 +26,7 @@ OUTPUT_DIR = BOX_ROOT / "unsharp_mask_augmentation"
 
 DATASET_PATH = "science/LSAR/GCOV/grids/frequencyB/HHHH"
 
-RADIUS = 3
+RADIUS = 4
 AMOUNT = 1.0
 
 # Same 1000 x 1000 pixel crop as black top-hat

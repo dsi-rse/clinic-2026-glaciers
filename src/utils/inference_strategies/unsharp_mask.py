@@ -1,8 +1,9 @@
-
 """Unsharp masking enhancement for grayscale images."""
 
 import numpy as np
 from skimage.filters import unsharp_mask
+
+EXPECTED_NDIM = 2
 
 
 def apply_unsharp_mask(
@@ -11,8 +12,7 @@ def apply_unsharp_mask(
     amount: float = 1.0,
 ) -> np.ndarray:
     """Sharpen image details using unsharp masking."""
-
-    if image.ndim != 2:
+    if image.ndim != EXPECTED_NDIM:
         raise ValueError("Input image must be 2D.")
 
     if radius <= 0:

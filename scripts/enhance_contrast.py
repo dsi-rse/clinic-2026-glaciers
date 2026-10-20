@@ -1,8 +1,16 @@
 """Test contrast enhancement (CLAHE, high-pass) on NISAR tiles.
 
-For each chosen tile, saves one figure with the input on the left and the CLAHE and high-pass
-outputs next to it. Tiles are cut and scaled with the same code as the Label Studio tile
-server (labelstudio/tileserver/tileserver.py), so they look like the tiles you label.
+This scripts loads frames or set of frames an applies two contrast enhancement
+methods (CLAHE and high-pass). Since NISAR frames are big to work, they are
+divided into tiles of 4096 * 4096 pixels. Then both enhancement functions are applied
+and each output is save in their respective files.
+
+Since we are comparing the results of both approaches,
+a third image (original + clahe + high-pass) in saved in the comparison folder.
+
+Finally, the current script allow us to run randomly a number of frames and tiles
+as we are trying to compare which enhancement approach would work better in
+the NISAR frames.
 
 Which frames to use (pick one):
     default       a random sample of --n-frames frames
@@ -11,11 +19,15 @@ Which frames to use (pick one):
 
 Examples:
     uv run python scripts/enhance_contrast.py --n-frames 1 --n-tiles 3
-    uv run python scripts/enhance_contrast.py --frames a.h5 b.h5 --n-tiles 5
+    uv run python scripts/enhance_contrast.py --frames frame_a.h5 frame_b.h5 --n-tiles 5
     uv run python scripts/enhance_contrast.py --all-frames --n-tiles 2
+    uv run python scripts/enhance_contrast.py --all-frames --all-tiles
 
-Box keeps some frames online-only. If reading a frame times out, download it first (right-click
-in Finder > Make Available Offline) or pass a downloaded frame with --frame.
+Which tiles to use: --n-tiles random tiles per frame (default 3), or --all-tiles for
+every tile with data. --all-tiles is slow and writes a lot of files.
+
+Instructions:
+    Before running the script verify that the images to run are available offline.
 """
 
 import argparse
@@ -57,8 +69,9 @@ def choose_tiles(
     frames: list[Path],
     n_tiles: int,
     seed: int,
+    all_tiles: bool = False,
 ) -> list[tuple[Path, dict, dict]]:
-    """Randomly choose n_tiles tiles with data from each frame.
+    """Choose tiles with data from each frame: every tile, or n_tiles random ones.
 
     Returns a list of (frame path, frame stats, tile) for each chosen tile.
     """
@@ -67,9 +80,13 @@ def choose_tiles(
     for frame in frames:
         stats = tileserver.get_stats(frame)  # slow the first time, then cached
         tiles = tileserver.list_tiles(stats, TILE_SIZE)
-        for tile_number in rng.choice(
-            len(tiles), min(n_tiles, len(tiles)), replace=False
-        ):
+        if all_tiles:
+            tile_numbers = range(len(tiles))
+        else:
+            tile_numbers = rng.choice(
+                len(tiles), min(n_tiles, len(tiles)), replace=False
+            )
+        for tile_number in tile_numbers:
             chosen.append((frame, stats, tiles[tile_number]))
     return chosen
 
@@ -130,6 +147,11 @@ def main() -> None:
     )
     parser.add_argument("--n-tiles", type=int, default=3, help="tiles per frame")
     parser.add_argument(
+        "--all-tiles",
+        action="store_true",
+        help="use every tile with data in each frame (ignores --n-tiles)",
+    )
+    parser.add_argument(
         "--seed", type=int, default=0, help="makes the sample repeatable"
     )
     parser.add_argument("--clip-limit", type=float, default=0.01, help="CLAHE strength")
@@ -151,7 +173,9 @@ def main() -> None:
         frames = choose_frames(find_frames(args.image_dir), args.n_frames, args.seed)
 
     # Choose random tiles with data in each frame
-    chosen = choose_tiles(tileserver, frames, args.n_tiles, args.seed)
+    chosen = choose_tiles(
+        tileserver, frames, args.n_tiles, args.seed, all_tiles=args.all_tiles
+    )
 
     log_lines = [f"seed={args.seed} clip_limit={args.clip_limit} sigma={args.sigma}"]
     for frame, stats, tile_info in chosen:

@@ -19,7 +19,7 @@ endif
 
 
 # Build Docker image
-.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop
+.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast
 
 # Build Docker image 
 build-only: 
@@ -50,4 +50,6 @@ labelstudio-stop:
 	docker compose down labelstudio tileserver
 	@echo "Label Studio stopped. Your annotations are kept; export them with 'make labelstudio-export'."
 
-
+# Test contrast enhancement (CLAHE, high-pass) on NISAR tiles. See scripts/README.md.
+enhance-contrast:
+	uv run python scripts/enhance_contrast.py

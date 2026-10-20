@@ -11,6 +11,7 @@ from skimage.exposure import equalize_adapthist
 NODATA = 0
 LOW_PERCENTILE = 1
 HIGH_PERCENTILE = 99
+MIN_RANGE = 1e-6  # a smaller spread of values than this counts as a constant tile
 
 
 def clahe(tile: np.ndarray, clip_limit: float = 0.01) -> np.ndarray:
@@ -45,9 +46,26 @@ def high_pass(tile: np.ndarray, sigma: float = 50) -> np.ndarray:
         pixels), nodata set to 0.
     """
     valid = tile != NODATA
+    result = np.zeros(tile.shape)
+    if not valid.any():  # all nodata, return tile inmediately
+        return result
+
+    # Blur only the valid pixels: blur (valid * image) and divide by the blurred mask, so
+    # nodata pixels do not pull down the values of valid pixels next to them.
     image = tile.astype(float)
-    difference = image - gaussian_filter(image, sigma)
+    # Creating matrix (mask) for only valid pixels. [Sigmas and zeros]
+    weights = gaussian_filter(valid.astype(float), sigma)
+    # Applying the weigths to the image, so we dont drag the avergae of some pixels
+    # with no data information.
+    blurred = gaussian_filter(image * valid, sigma) / np.maximum(weights, 1e-12)
+    # We take the difference
+    difference = image - blurred
+    # Min and max value of the difference. If the high and lowest value are not different
+    # A constant tile has nothign to show, so we return a image full of 0 (no data)
     low, high = np.percentile(difference[valid], [LOW_PERCENTILE, HIGH_PERCENTILE])
+    if high - low < MIN_RANGE:
+        return result
+    # Apply the strech formula, clipping the values between 0 and 1.
     result = np.clip((difference - low) / (high - low), 0, 1)
     result[~valid] = 0
     return result

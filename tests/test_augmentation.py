@@ -18,6 +18,7 @@ def check_output(tile: np.ndarray, result: np.ndarray) -> None:
 
 
 def test_high_pass_all_nodata() -> None:
+    """An all-nodata tile gives all zeros and does not raise."""
     tile = np.zeros((SIZE, SIZE), dtype=np.uint8)
     result = high_pass(tile, SIGMA)
     check_output(tile, result)
@@ -25,11 +26,13 @@ def test_high_pass_all_nodata() -> None:
 
 
 def test_high_pass_constant_valid_tile() -> None:
+    """A constant valid tile gives finite values, not NaN."""
     tile = np.full((SIZE, SIZE), 100, dtype=np.uint8)
     check_output(tile, high_pass(tile, SIGMA))
 
 
 def test_high_pass_constant_tile_next_to_nodata() -> None:
+    """A constant tile next to nodata still gives a valid output."""
     tile = np.full((SIZE, SIZE), 100, dtype=np.uint8)
     tile[:, : SIZE // 2] = NODATA  # left half is nodata
     check_output(tile, high_pass(tile, SIGMA))
@@ -47,6 +50,7 @@ def test_high_pass_blur_ignores_nodata() -> None:
 
 
 def test_high_pass_random_tile_with_nodata() -> None:
+    """A random tile with a nodata strip gives a valid output."""
     rng = np.random.default_rng(0)
     tile = rng.integers(1, 256, size=(SIZE, SIZE), dtype=np.uint8)
     tile[:10, :] = NODATA
@@ -54,6 +58,7 @@ def test_high_pass_random_tile_with_nodata() -> None:
 
 
 def test_clahe_keeps_nodata_zero() -> None:
+    """CLAHE keeps nodata pixels at 0 and the output in [0, 1]."""
     rng = np.random.default_rng(0)
     tile = rng.integers(1, 256, size=(SIZE, SIZE), dtype=np.uint8)
     tile[:10, :] = NODATA

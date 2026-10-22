@@ -19,7 +19,7 @@ endif
 
 
 # Build Docker image
-.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast
+.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast split-tiles
 
 # Build Docker image 
 build-only: 
@@ -53,3 +53,9 @@ labelstudio-stop:
 # Test contrast enhancement (CLAHE, high-pass) on NISAR tiles. See scripts/README.md.
 enhance-contrast:
 	uv run python scripts/enhance_contrast.py
+
+# Split the tiles into train and test with a checkerboard of square blocks, and draw a map
+# for each block size: 10 km tiles (1024 px), then 41 km tiles (4096 px). See scripts/README.md.
+split-tiles:
+	uv run python scripts/split_tiles.py --block-km 30 60 120 --tile-size 1024 --plot
+	uv run python scripts/split_tiles.py --block-km 100 150 200 --tile-size 4096 --plot

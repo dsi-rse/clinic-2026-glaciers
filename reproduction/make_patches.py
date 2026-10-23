@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-"""
-Cut training patches from the paper's released GeoTIFFs:
+"""Cut training patches from the paper's released GeoTIFFs.
+
+Inputs (same pixel grid):
     202106_backscatter_map.tiff  (Sentinel-1 backscatter, dB, 100 m)
-    202106_fracture_map.tiff     (fracture score 0..1, same grid)
+    202106_fracture_map.tiff     (fracture score 0..1)
 
 The files are continent-sized (~45,000 x 55,000 pixels), so this reads one strip of
 rows at a time and never loads a whole file.
@@ -15,13 +16,14 @@ and one row per patch in <out-dir>/index.csv (including map position, used later
 to split train/validation by geographic block).
 
 Usage:
-  python make_patches.py \
-      --backscatter ../data/202106_backscatter_map.tiff \
-      --fracture    ../data/202106_fracture_map.tiff \
-      --out-dir patches_2021
+    python make_patches.py \
+        --backscatter data/202106_backscatter_map.tiff \
+        --fracture data/202106_fracture_map.tiff \
+        --out-dir patches_2021
 
 Requires: numpy, rasterio
 """
+
 import argparse
 import csv
 from pathlib import Path
@@ -30,31 +32,60 @@ import numpy as np
 import rasterio
 from rasterio.windows import Window
 
+# A pixel counts as "crevasse" when the authors' score is above this value.
+CREVASSE_SCORE = 0.5
+# Share of crevasse pixels used to report how many patches contain crevasses.
+CREVASSE_PATCH_FRAC = 0.001
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+
+def main() -> None:
+    """Parse the command line, cut the patches, and write index.csv."""
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--backscatter", required=True)
     ap.add_argument("--fracture", required=True)
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--patch-size", type=int, default=256)
-    ap.add_argument("--stride", type=int, default=256, help="256 = no overlap; 128 = 4x more patches")
+    ap.add_argument(
+        "--stride",
+        type=int,
+        default=256,
+        help="256 = no overlap; 128 = 4x more patches",
+    )
     ap.add_argument("--db-min", type=float, default=-25.0, help="dB value mapped to 0")
     ap.add_argument("--db-max", type=float, default=5.0, help="dB value mapped to 1")
-    ap.add_argument("--min-valid-frac", type=float, default=0.9,
-                    help="Skip patches with less than this fraction of pixels having data in both files")
-    ap.add_argument("--empty-thresh", type=float, default=0.001,
-                    help="A patch is 'empty' if fewer than this fraction of valid pixels have score > 0.5")
-    ap.add_argument("--empty-keep-prob", type=float, default=1.0,
-                    help="Chance of keeping an empty patch (lower it to rebalance toward crevassed patches)")
-    ap.add_argument("--keep-prob", type=float, default=1.0,
-                    help="Randomly keep only this fraction of all patches (to shrink the dataset)")
+    ap.add_argument(
+        "--min-valid-frac",
+        type=float,
+        default=0.9,
+        help="Skip patches with less than this fraction of pixels with data in both files",
+    )
+    ap.add_argument(
+        "--empty-thresh",
+        type=float,
+        default=0.001,
+        help="A patch is 'empty' if fewer than this fraction of valid pixels have score > 0.5",
+    )
+    ap.add_argument(
+        "--empty-keep-prob",
+        type=float,
+        default=1.0,
+        help="Chance of keeping an empty patch (lower it to favour crevassed patches)",
+    )
+    ap.add_argument(
+        "--keep-prob",
+        type=float,
+        default=1.0,
+        help="Randomly keep only this fraction of all patches (to shrink the dataset)",
+    )
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     rng = np.random.default_rng(args.seed)
     out = Path(args.out_dir)
     (out / "patches").mkdir(parents=True, exist_ok=True)
-    P, S = args.patch_size, args.stride
+    patch, stride = args.patch_size, args.stride
 
     rows = []
     n_seen = n_lowvalid = n_empty_dropped = 0
@@ -63,66 +94,83 @@ def main():
         if sb.crs != sf.crs or sb.res != sf.res:
             raise SystemExit("CRS or pixel size differ between the two files.")
         if (sb.transform.c, sb.transform.f) != (sf.transform.c, sf.transform.f):
-            raise SystemExit("The two files have different top-left corners; they would need reprojecting.")
+            raise SystemExit(
+                "The two files have different top-left corners; they would need reprojecting."
+            )
 
-        H = min(sb.height, sf.height)
-        W = min(sb.width, sf.width)          # fracture map is narrower: crop to the common area
+        height = min(sb.height, sf.height)
+        width = min(sb.width, sf.width)  # fracture map is narrower: crop to shared area
         res = sb.res[0]
         x_left, y_top = sb.transform.c, sb.transform.f
-        print(f"common area: {H} x {W} pixels, pixel size {res} m")
+        print(f"common area: {height} x {width} pixels, pixel size {res} m")
 
-        for r0 in range(0, H - P + 1, S):
-            img_strip = sb.read(1, window=Window(0, r0, W, P)).astype(np.float32)
-            lab_strip = sf.read(1, window=Window(0, r0, W, P)).astype(np.float32)
+        for r0 in range(0, height - patch + 1, stride):
+            img_strip = sb.read(1, window=Window(0, r0, width, patch)).astype(
+                np.float32
+            )
+            lab_strip = sf.read(1, window=Window(0, r0, width, patch)).astype(
+                np.float32
+            )
             valid_strip = np.isfinite(img_strip) & np.isfinite(lab_strip)
             if not valid_strip.any():
                 continue
 
-            for c0 in range(0, W - P + 1, S):
-                v = valid_strip[:, c0:c0 + P]
+            for c0 in range(0, width - patch + 1, stride):
+                v = valid_strip[:, c0 : c0 + patch]
                 n_valid = int(v.sum())
                 n_seen += 1
-                if n_valid / (P * P) < max(args.min_valid_frac, 1e-6):
+                if n_valid / (patch * patch) < max(args.min_valid_frac, 1e-6):
                     n_lowvalid += 1
                     continue
 
-                lab = np.where(v, np.clip(lab_strip[:, c0:c0 + P], 0, 1), 0.0)
-                pos_frac = float(((lab > 0.5) & v).sum() / n_valid)
+                lab = np.where(v, np.clip(lab_strip[:, c0 : c0 + patch], 0, 1), 0.0)
+                pos_frac = float(((lab > CREVASSE_SCORE) & v).sum() / n_valid)
                 if pos_frac < args.empty_thresh and rng.random() > args.empty_keep_prob:
                     n_empty_dropped += 1
                     continue
                 if rng.random() > args.keep_prob:
                     continue
 
-                img = np.where(v, img_strip[:, c0:c0 + P], args.db_min)
+                img = np.where(v, img_strip[:, c0 : c0 + patch], args.db_min)
                 img = np.clip((img - args.db_min) / (args.db_max - args.db_min), 0, 1)
 
                 pid = f"r{r0}_c{c0}"
-                np.savez_compressed(out / "patches" / f"{pid}.npz",
-                                    image=img[None].astype(np.float16),
-                                    label=lab.astype(np.float16), valid=v)
-                rows.append({
-                    "patch_id": pid, "row_px": r0, "col_px": c0,
-                    "x_m": x_left + c0 * res, "y_m": y_top - r0 * res,
-                    "valid_frac": round(n_valid / (P * P), 4),
-                    "mean_label": round(float(lab[v].mean()), 4),
-                    "pos_frac": round(pos_frac, 4),
-                })
-            if len(rows) and (r0 // S) % 20 == 0:
-                print(f"  row {r0}/{H}: {len(rows)} patches so far")
+                np.savez_compressed(
+                    out / "patches" / f"{pid}.npz",
+                    image=img[None].astype(np.float16),
+                    label=lab.astype(np.float16),
+                    valid=v,
+                )
+                rows.append(
+                    {
+                        "patch_id": pid,
+                        "row_px": r0,
+                        "col_px": c0,
+                        "x_m": x_left + c0 * res,
+                        "y_m": y_top - r0 * res,
+                        "valid_frac": round(n_valid / (patch * patch), 4),
+                        "mean_label": round(float(lab[v].mean()), 4),
+                        "pos_frac": round(pos_frac, 4),
+                    }
+                )
+            if rows and (r0 // stride) % 20 == 0:
+                print(f"  row {r0}/{height}: {len(rows)} patches so far")
 
     if not rows:
         raise SystemExit("No patches written. Try lowering --min-valid-frac.")
-    with open(out / "index.csv", "w", newline="") as fh:
+    with (out / "index.csv").open("w", newline="") as fh:
         wr = csv.DictWriter(fh, fieldnames=list(rows[0]))
         wr.writeheader()
         wr.writerows(rows)
 
     pos = np.array([r["pos_frac"] for r in rows])
-    print(f"\nwindows examined: {n_seen}   skipped (too little data): {n_lowvalid}   "
-          f"empty patches dropped: {n_empty_dropped}")
+    print(
+        f"\nwindows examined: {n_seen}   skipped (too little data): {n_lowvalid}   "
+        f"empty patches dropped: {n_empty_dropped}"
+    )
     print(f"patches written: {len(rows)}")
-    print(f"patches with >0.1% crevasse pixels (score>0.5): {(pos >= 0.001).mean() * 100:.1f}%")
+    share = (pos >= CREVASSE_PATCH_FRAC).mean() * 100
+    print(f"patches with >0.1% crevasse pixels (score>0.5): {share:.1f}%")
     print(f"average share of valid pixels with score>0.5: {pos.mean() * 100:.2f}%")
     print(f"index: {out / 'index.csv'}")
 

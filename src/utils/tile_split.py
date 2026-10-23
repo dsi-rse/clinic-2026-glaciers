@@ -60,13 +60,17 @@ def find_frames(image_dir: Path) -> list[Path]:
     return frames
 
 
+def is_dataless(flags: int) -> bool:
+    """True if these macOS file flags mark the file as online-only."""
+    return bool(flags & DATALESS_FLAG)
+
+
 def is_online_only(path: Path) -> bool:
     """True if the file is online-only (Box has not downloaded it), so reading it would wait.
 
     Only macOS marks files this way. On other systems every file counts as downloaded.
     """
-    flags = getattr(path.stat(), "st_flags", 0)
-    return bool(flags & DATALESS_FLAG)
+    return is_dataless(getattr(path.stat(), "st_flags", 0))
 
 
 def get_frame_tiles(

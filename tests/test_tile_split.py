@@ -112,15 +112,17 @@ def test_blocks_too_small_for_the_tiles() -> None:
         assign_blocks(tiles, BLOCK_TILE_M, block_km=10)
 
 
-def test_online_only_check_reads_the_file_flag(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
-    """A file with the dataless flag counts as online-only, a normal file does not."""
-    normal = tmp_path / "normal.h5"
-    normal.write_text("x")
-    assert not tile_split.is_online_only(normal)
+def test_dataless_flag_means_online_only() -> None:
+    """The macOS dataless flag marks a file as online-only, other flags do not."""
+    assert tile_split.is_dataless(tile_split.DATALESS_FLAG)
+    assert tile_split.is_dataless(tile_split.DATALESS_FLAG | 1)
+    assert not tile_split.is_dataless(0)
+    assert not tile_split.is_dataless(1)
 
-    class FakeStat:
-        st_flags = tile_split.DATALESS_FLAG
 
-    monkeypatch.setattr(Path, "stat", lambda self: FakeStat())
-    assert tile_split.is_online_only(normal)
-    assert len(find_frames(tmp_path)) == 1
+def test_a_normal_file_is_not_online_only(tmp_path: Path) -> None:
+    """A file on disk is downloaded, so it is listed as a frame and not skipped."""
+    frame = tmp_path / "frame.h5"
+    frame.write_text("x")
+    assert not tile_split.is_online_only(frame)
+    assert find_frames(tmp_path) == [frame]

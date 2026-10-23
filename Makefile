@@ -19,7 +19,7 @@ endif
 
 
 # Build Docker image
-.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast split-tiles
+.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast enhance-contrast-local split-tiles split-tiles-local
 
 # Build Docker image 
 build-only: 
@@ -51,11 +51,23 @@ labelstudio-stop:
 	@echo "Label Studio stopped. Your annotations are kept; export them with 'make labelstudio-export'."
 
 # Test contrast enhancement (CLAHE, high-pass) on NISAR tiles. See scripts/README.md.
-enhance-contrast:
-	uv run python scripts/enhance_contrast.py
+# Docker (official setup): add script options with ARGS, for example
+#   make enhance-contrast ARGS="--n-tiles 5 --sigma 30"
+enhance-contrast: build-only
+	docker compose run --rm $(project_name) python scripts/enhance_contrast.py $(ARGS)
+
+# Same script with uv, for a local environment (no Docker).
+enhance-contrast-local:
+	uv run python scripts/enhance_contrast.py $(ARGS)
 
 # Split the tiles into train and test with a checkerboard of square blocks, and draw a map
 # for each block size: 10 km tiles (1024 px), then 41 km tiles (4096 px). See scripts/README.md.
-split-tiles:
+# Docker (official setup)
+split-tiles: build-only
+	docker compose run --rm $(project_name) python scripts/split_tiles.py --block-km 30 60 120 --tile-size 1024 --plot
+	docker compose run --rm $(project_name) python scripts/split_tiles.py --block-km 100 150 200 --tile-size 4096 --plot
+
+# Same with uv, for a local environment (no Docker).
+split-tiles-local:
 	uv run python scripts/split_tiles.py --block-km 30 60 120 --tile-size 1024 --plot
 	uv run python scripts/split_tiles.py --block-km 100 150 200 --tile-size 4096 --plot

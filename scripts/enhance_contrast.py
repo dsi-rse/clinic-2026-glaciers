@@ -91,6 +91,28 @@ def choose_tiles(
     return chosen
 
 
+def load_tiles(
+    tileserver: object,
+    image_dir: Path,
+    frame_name: str,
+    tile_positions: list[tuple[int, int]],
+    tile_size: int = TILE_SIZE,
+) -> tuple[Path, dict]:
+    """Find the frame whose file name starts with frame_name and render the given tiles.
+
+    Returns the frame path and the tiles as {(row, column): tile}.
+    """
+    frame = next(image_dir.rglob(f"{frame_name}*.h5"))
+    stats = tileserver.get_stats(
+        frame
+    )  # the frame's display range, cached after the first time
+    tiles = {
+        (row, col): tileserver.render_tile(frame, stats, tile_size, row, col)
+        for row, col in tile_positions
+    }
+    return frame, tiles
+
+
 def find_frames(image_dir: Path) -> list[Path]:
     """Return all .h5 frames in image_dir, sorted by path."""
     frames = sorted(

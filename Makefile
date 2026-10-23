@@ -19,8 +19,7 @@ endif
 
 
 # Build Docker image
-.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop
-black-tophat unsharp-mask
+.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop black-tophat unsharp-mask
 
 # Build Docker image 
 build-only: 

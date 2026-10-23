@@ -19,7 +19,7 @@ endif
 
 
 # Build Docker image
-.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop
+.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop black-tophat unsharp-mask
 
 # Build Docker image 
 build-only: 
@@ -51,3 +51,9 @@ labelstudio-stop:
 	@echo "Label Studio stopped. Your annotations are kept; export them with 'make labelstudio-export'."
 
 
+# Run NISAR image enhancement scripts using the configured data directory.
+black-tophat:
+	DATA_DIR="$(DATA_DIR)" .venv/bin/python3 scripts/run_black_tophat.py
+
+unsharp-mask:
+	DATA_DIR="$(DATA_DIR)" .venv/bin/python3 scripts/run_unsharp_mask.py

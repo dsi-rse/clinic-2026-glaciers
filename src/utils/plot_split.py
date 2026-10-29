@@ -106,6 +106,29 @@ def draw_blocks(
         )
 
 
+def clip_to_box(ax: object, region: tuple | None) -> None:
+    """Cut the blocks and tiles drawn so far at the bounding box, so the area is the box."""
+    if region is None:
+        return
+    x_min, y_min, x_max, y_max = region
+    clip = Rectangle(
+        (x_min, y_min), x_max - x_min, y_max - y_min, transform=ax.transData
+    )
+    for collection in ax.collections:
+        collection.set_clip_path(clip)
+
+
+def legend_below(ax: object, handles: list, ncol: int | None = None) -> None:
+    """Put the legend outside the plot, right after the x axis title."""
+    ax.legend(
+        handles=handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.1),
+        ncol=ncol or len(handles),
+        frameon=False,
+    )
+
+
 def plot_tile_split(
     table: pd.DataFrame,
     tile_m: float,
@@ -185,6 +208,7 @@ def plot_tile_split(
             top + margin,
         )
     for ax in axes:
+        clip_to_box(ax, region)
         ax.set_xlim(left, right)
         ax.set_ylim(bottom, top)
         ax.set_aspect("equal")
@@ -200,11 +224,11 @@ def plot_tile_split(
         for name, color in SPLIT_COLORS.items()
     ]
     panel_a.set_title("A. Blocks over the area of analysis", color=TEXT_COLOR)
-    panel_a.legend(handles=[*block_handles, region_handle], loc="lower left")
+    legend_below(panel_a, [*block_handles, region_handle])
 
     panel_b.set_title("B. Where the tiles land (outlines only)", color=TEXT_COLOR)
     tile_handle = Line2D([], [], color=LINE_COLOR, linewidth=0.5, label="tile outline")
-    panel_b.legend(handles=[*block_handles, tile_handle], loc="lower left")
+    legend_below(panel_b, [*block_handles, tile_handle])
 
     panel_c.set_title("C. Tiles colored by split, block borders only", color=TEXT_COLOR)
     tile_handles = [
@@ -217,7 +241,7 @@ def plot_tile_split(
     border_handle = Line2D(
         [], [], color=LINE_COLOR, linewidth=0.9, label="block border"
     )
-    panel_c.legend(handles=[*tile_handles, border_handle], loc="lower left")
+    legend_below(panel_c, [*tile_handles, border_handle], ncol=2)
 
     fig.suptitle(
         f"{block_km:g} km blocks, {tile_km:.1f} km tiles: "
@@ -226,4 +250,4 @@ def plot_tile_split(
     )
     fig.tight_layout()
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=130)
+    fig.savefig(output, dpi=130, bbox_inches="tight")

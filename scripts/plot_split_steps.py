@@ -32,10 +32,12 @@ from utils.plot_split import (
     DROPPED_COLOR,
     LINE_COLOR,
     SPLIT_COLORS,
+    clip_to_box,
     draw_blocks,
     draw_region,
     get_blocks,
     get_region,
+    legend_below,
     make_squares,
 )
 from utils.settings import DATA_DIR
@@ -121,29 +123,6 @@ def draw_box(ax: object, region: tuple | None) -> None:
             linewidth=2,
             zorder=7,
         )
-    )
-
-
-def clip_to_box(ax: object, region: tuple | None) -> None:
-    """Cut the blocks and tiles drawn so far at the bounding box, so the area is the box."""
-    if region is None:
-        return
-    x_min, y_min, x_max, y_max = region
-    clip = Rectangle(
-        (x_min, y_min), x_max - x_min, y_max - y_min, transform=ax.transData
-    )
-    for collection in ax.collections:
-        collection.set_clip_path(clip)
-
-
-def legend_below(ax: object, handles: list, ncol: int | None = None) -> None:
-    """Put the legend outside the plot, right after the x axis title."""
-    ax.legend(
-        handles=handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.1),
-        ncol=ncol or len(handles),
-        frameon=False,
     )
 
 

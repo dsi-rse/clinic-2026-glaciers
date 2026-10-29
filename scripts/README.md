@@ -4,7 +4,8 @@
 | --- | --- | --- |
 | [`enhance_contrast.py`](#enhance_contrastpy) | Makes CLAHE and high-pass versions of NISAR tiles | `make enhance-contrast` |
 | [`split_tiles.py`](#split_tilespy) | Splits tiles into train and test with a checkerboard | `make split-tiles` |
-| [`plot_stack_tiles.py`](#plot_stack_tilespy) | Plots all the dates of one stack to see how the ice moves | `make plot-stack ARGS="--stack-id 077_A_140"` |
+| [`plot_split_steps.py`](#plot_split_stepspy) | Draws the split in four pictures: study area, blocks, sample tiles, tiles after the split | `make plot-split-steps ARGS="--block-km 40.96"` |
+| [`plot_ice_movement.py`](#plot_ice_movementpy) | Plots all the dates of one stack to see how the ice moves | `make plot-ice-movement ARGS="--stack-id 077_A_140"` |
 
 ## Setup
 
@@ -16,7 +17,7 @@ You can run the scripts with **Docker + Make** or with **`uv`**.
 | Add options | `make enhance-contrast ARGS="--n-tiles 5"` | `make enhance-contrast-local ARGS="--n-tiles 5"` |
 | See all options | `docker compose run --rm clinic-2026-glaciers python scripts/<script>.py --help` | `uv run python scripts/<script>.py --help` |
 
-(Same pattern for `split-tiles` and `split-tiles-local`.)
+(Same pattern for `split-tiles`, `split-tiles-custom`, `split-tiles-pine-island` and `plot-split-steps`, each with a `-local` version.)
 
 Before you start:
 
@@ -125,14 +126,16 @@ by frame or by tile number would still put the same ground in both train and tes
    offers) and the map position of each tile center in metres. Positions come from
    `xCoordinates` and `yCoordinates` in each `.h5` frame (EPSG:3031). The script stops if a
    frame uses another projection or pixel size.
-2. **Make blocks.** Covers the map with square blocks (`--block-km` per side). Neighbors have
-   opposite colors, like a checkerboard: one color is train, the other test (`--swap`
-   exchanges them).
-3. **Assign tiles.** A tile goes to the block that holds its center, whatever frame it comes
+2. **Bounding box (optional).** With `--region`, only the tiles that lie completely inside the
+   box are kept (the area of analysis). Tiles that only partly overlap it are dropped.
+3. **Make blocks.** Covers the tiles that are left with square blocks (`--block-km` per side),
+   starting at their lower left corner. Neighbors have opposite colors, like a checkerboard:
+   one color is train, the other test (`--swap` exchanges them).
+4. **Assign tiles.** A tile goes to the block that holds its center, whatever frame it comes
    from. Overlapping frames of the same place land on the same side.
-4. **Drop border tiles.** Tiles whose center is closer to a block edge than half a tile (plus
+5. **Drop border tiles.** Tiles whose center is closer to a block edge than half a tile (plus
    half of `--gap-km`) are labeled `gap`. No train tile then touches a test tile.
-5. **Check.** Stops with an error if any train tile is closer than one tile width (plus the
+6. **Check.** Stops with an error if any train tile is closer than one tile width (plus the
    gap) to a test tile.
 
 ### Run it
@@ -143,18 +146,32 @@ by frame or by tile number would still put the same ground in both train and tes
 make split-tiles
 
 # Your own options
-make split-tiles ARGS="--block-km 60 --swap --gap-km 5 --plot"
+make split-tiles-custom ARGS="--block-km 60 --swap --gap-km 5 --plot"
+
+# Pine Island comparison: original box, 1024 and 2048 px tiles, 4 block sizes, gap 0 km
+make split-tiles-pine-island
 ```
 
-Same with `uv`: `make split-tiles-local`, or
+Same with `uv`: add `-local` to the target (`make split-tiles-local`), or
 `uv run python scripts/split_tiles.py --block-km 60 --swap --gap-km 5 --plot`.
+
+With a bounding box, one run compares several tile sizes and block sizes and writes a
+summary table:
+
+```bash
+uv run python scripts/split_tiles.py \
+  --region -1686.068 -362.187 -1561.229 -255.680 \
+  --tile-size 1024 2048 --block-km 30.72 40.96 53.33 61.44 --gap-km 0 --plot \
+  --output "$DATA_DIR/splits/block_size_comparison/tile_split.csv"
+```
 
 ### Options
 
 | Option | Default | What it does |
 | --- | --- | --- |
 | `--block-km` | required | Block sizes in km. Several sizes make one CSV (and map) each. |
-| `--tile-size` | 4096 | Tile size in pixels (a multiple of 512). 1024 px is about 10 km. |
+| `--tile-size` | 4096 | Tile size in pixels (a multiple of 512). 1024 px is about 10 km. Several sizes run one after the other. |
+| `--region` | off | Bounding box `X_MIN Y_MIN X_MAX Y_MAX` in **km** (map x and y, EPSG:3031: not metres, not latitude and longitude). Only tiles completely inside are used. |
 | `--gap-km` | 0 | Extra distance kept free between train and test tiles. |
 | `--swap` | off | Swap train and test colors. |
 | `--plot` | off | Also save a map (PNG) next to each CSV. |
@@ -175,7 +192,13 @@ Same with `uv`: `make split-tiles-local`, or
 | `block_x`, `block_y` | The tile's block. |
 | `block_color` | Whether that block is train or test. |
 
-**Map** (`--plot`): one PNG per block size, three panels side by side.
+**Summary** (with `--region`): `<output name>_region_summary.csv`, one row per tile size and
+block size: `tiles_found`, `outside_region`, `in_region`, `train`, `test`, `dropped` and
+`dropped_pct` (the share of the tiles inside the box). Combinations where the block is too
+small for the tile are skipped with a message.
+
+**Map** (`--plot`): one PNG per block size, three panels side by side. Legends are below the
+plots. With `--region`, the blocks are cut at the box.
 
 | Panel | Shows |
 | --- | --- |
@@ -205,12 +228,76 @@ Tiles from different frames overlap, so squares in B and C are semi-transparent.
   include them, make them available offline in Finder, or use `--include-online-only`.
   Skipped frames mean fewer tiles, so check that the map still covers the whole area.
   Detecting online-only files works on macOS only.
-- The grid starts at the lower left corner of the tiles.
+- The grid starts at the lower left corner of the tiles that are left (inside the box, if
+  `--region` is given). A box that is a whole number of blocks wastes fewer tiles.
+- Counts include every date of every place, so the same ground is counted several times.
+- Many kept tiles at the edge of a radar frame are mostly black (the tile server keeps a tile
+  with at least 5% valid pixels). There is no filter for this yet.
 - All tiles come from one area, so the test score measures performance in this area, not on
   other glaciers. Data from other places is needed to test that.
 - There is no validation set yet, only train and test.
 
-## `plot_stack_tiles.py`
+## `plot_split_steps.py`
+
+### What it does
+
+Shows how the split looks on the data, in four pictures. It runs the same steps as
+`split_tiles.py` (same options), for **one tile size and one block size** per run. Tiles are
+never cropped: a tile is kept whole or dropped. Code: `scripts/plot_split_steps.py`, with
+helpers in `src/utils/plot_split.py`.
+
+| Picture | Shows |
+| --- | --- |
+| `1_study_area.png` | The border of the study area (all frames) and the bounding box, if `--region` is given. |
+| `2_blocks.png` | The area left after the box, with the checkerboard of train and test blocks. |
+| `3_sample_tiles.png` | The tiles of a few sample stacks as outlines over the blocks. |
+| `4_sample_split.png` | The same tiles with their radar image: violet edge = train, green = test, faded gray = dropped. One panel per stack and date. |
+
+A stack id is the track, the direction and the frame (for example `077_A_140`): the same
+place on different dates.
+
+### Run it
+
+```bash
+make plot-split-steps ARGS="--region -1686.068 -362.187 -1561.229 -255.680 --tile-size 1024 --block-km 40.96 --gap-km 0 --stack-ids 077_A_140 019_A_141 091_A_140"
+```
+
+Same with `uv`: `make plot-split-steps-local ARGS="..."`. For several tile and block sizes,
+run it in a loop (each run reads the images again, so it takes a few minutes):
+
+```bash
+for size in 1024 2048; do
+  for block in 30.72 40.96 53.33 61.44; do
+    uv run python scripts/plot_split_steps.py \
+      --region -1686.068 -362.187 -1561.229 -255.680 \
+      --tile-size $size --block-km $block --gap-km 0 \
+      --output-dir "$DATA_DIR/split_steps/block_size_comparison/${size}px/blocks_${block}km"
+  done
+done
+```
+
+### Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `--block-km` | required | Block size in km (one value). |
+| `--tile-size` | 4096 | Tile size in pixels (one value). |
+| `--region` | off | Bounding box in km, like in `split_tiles.py`. |
+| `--gap-km` | 0 | Extra distance kept free between train and test tiles. |
+| `--swap` | off | Swap train and test colors. |
+| `--stack-ids` | the stacks with most frames | Sample stacks to draw in pictures 3 and 4. They need tiles inside the box. |
+| `--n-stacks` | 2 | How many sample stacks when `--stack-ids` is not given. |
+| `--max-dates` | 3 | Most dates drawn per stack. |
+| `--image-dir`, `--cache-dir` | as in `split_tiles.py` | Frames and tile server cache. |
+| `--output-dir` | `DATA_DIR/split_steps` | Folder for the four pictures. A new run overwrites files with the same name. |
+
+### Good to know
+
+- Pictures 3 and 4 read the images of the sample stacks, so a run takes a few minutes.
+- In a small box, a stack that covers one corner falls in one block, so it can be all train
+  or all test.
+
+## `plot_ice_movement.py`
 
 ### What it does
 
@@ -227,10 +314,10 @@ looks gray. Where it moved, red and cyan fringes appear. The code is in `src/uti
 ### Run it
 
 ```bash
-make plot-stack ARGS="--stack-id 077_A_140"           # Docker
-make plot-stack-local ARGS="--stack-id 077_A_140"     # uv
+make plot-ice-movement ARGS="--stack-id 077_A_140"           # Docker
+make plot-ice-movement-local ARGS="--stack-id 077_A_140"     # uv
 
-uv run python scripts/plot_stack_tiles.py --stack-id 077_A_140 --zoom-km 20
+uv run python scripts/plot_ice_movement.py --stack-id 077_A_140 --zoom-km 20
 ```
 
 | Option | Default | What it does |

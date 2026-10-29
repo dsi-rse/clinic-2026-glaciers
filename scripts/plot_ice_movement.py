@@ -9,8 +9,8 @@ first date, cyan is the last date. One PNG is written per stack id.
 You can give the stack id, or the name of any frame of the stack.
 
 Examples:
-    uv run python scripts/plot_stack_tiles.py --stack-id 077_A_140
-    uv run python scripts/plot_stack_tiles.py --stack-id NISAR_L2_PR_GCOV_024_077_A_140_4005_SHSH_A_20260701T135211_20260701T135247_P05023_N_F_J_001
+    uv run python scripts/plot_ice_movement.py --stack-id 077_A_140
+    uv run python scripts/plot_ice_movement.py --stack-id NISAR_L2_PR_GCOV_024_077_A_140_4005_SHSH_A_20260701T135211_20260701T135247_P05023_N_F_J_001
 """
 
 import argparse

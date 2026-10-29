@@ -19,7 +19,7 @@ endif
 
 
 # Build Docker image
-.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast enhance-contrast-local split-tiles split-tiles-local
+.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast enhance-contrast-local split-tiles split-tiles-local split-tiles-custom split-tiles-custom-local split-tiles-pine-island split-tiles-pine-island-local plot-split-steps plot-split-steps-local plot-ice-movement plot-ice-movement-local
 
 # Build Docker image 
 build-only: 
@@ -71,3 +71,40 @@ split-tiles: build-only
 split-tiles-local:
 	uv run python scripts/split_tiles.py --block-km 30 60 120 --tile-size 1024 --plot
 	uv run python scripts/split_tiles.py --block-km 100 150 200 --tile-size 4096 --plot
+
+# Split with your own options, for example
+#   make split-tiles-custom ARGS="--region -1686.068 -362.187 -1561.229 -255.680 --tile-size 1024 --block-km 40.96 --plot"
+split-tiles-custom: build-only
+	docker compose run --rm $(project_name) python scripts/split_tiles.py $(ARGS)
+
+split-tiles-custom-local:
+	uv run python scripts/split_tiles.py $(ARGS)
+
+# Pine Island comparison: the original bounding box, 10 and 20 km tiles (1024 and 2048 px),
+# four block sizes, no gap, with maps. See scripts/README.md.
+PINE_ISLAND_ARGS := --region -1686.068 -362.187 -1561.229 -255.680 --tile-size 1024 2048 --block-km 30.72 40.96 53.33 61.44 --gap-km 0 --plot
+
+split-tiles-pine-island: build-only
+	docker compose run --rm $(project_name) python scripts/split_tiles.py $(PINE_ISLAND_ARGS)
+
+split-tiles-pine-island-local:
+	uv run python scripts/split_tiles.py $(PINE_ISLAND_ARGS)
+
+# Four pictures that show the split step by step (study area, blocks, sample tiles, sample
+# tiles after the split). One tile size and one block size per run. See scripts/README.md.
+#   make plot-split-steps ARGS="--region -1686.068 -362.187 -1561.229 -255.680 --tile-size 1024 --block-km 40.96"
+plot-split-steps: build-only
+	docker compose run --rm $(project_name) python scripts/plot_split_steps.py $(ARGS)
+
+plot-split-steps-local:
+	uv run python scripts/plot_split_steps.py $(ARGS)
+
+# Plot all the dates of one stack to see how the ice moves. See scripts/README.md.
+# Docker (official setup): give the stack id with ARGS, for example
+#   make plot-ice-movement ARGS="--stack-id 077_A_140"
+plot-ice-movement: build-only
+	docker compose run --rm $(project_name) python scripts/plot_ice_movement.py $(ARGS)
+
+# Same with uv, for a local environment (no Docker).
+plot-ice-movement-local:
+	uv run python scripts/plot_ice_movement.py $(ARGS)

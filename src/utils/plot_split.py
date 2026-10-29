@@ -15,6 +15,8 @@ from matplotlib.patches import Patch, Rectangle
 from shapely.geometry import box
 from shapely.ops import unary_union
 
+from utils.tile_split import get_tile_corner
+
 # Violet and green were checked with the dataviz palette validator (very distinct, also for
 # color-blind readers). Green is light on white, so every panel has a labeled legend.
 SPLIT_COLORS = {"train": "#6250d6", "test": "#1baf7a"}
@@ -26,12 +28,16 @@ TEXT_COLOR = "#0b0b0b"
 BLOCK_COLUMNS = ["block_x", "block_y", "block_color"]
 
 
-def get_blocks(table: pd.DataFrame, block_km: float) -> pd.DataFrame:
-    """One row per block that holds a tile: its lower left corner (km) and its color."""
-    blocks = table[BLOCK_COLUMNS].drop_duplicates().copy()
+def get_blocks(table: pd.DataFrame, block_km: float, tile_m: float) -> pd.DataFrame:
+    """One row per block that holds a tile: its lower left corner (km) and its color.
+
+    The grid starts at the lower left corner of the tiles, as in split_by_blocks.
+    """
     block_m = block_km * METRES_PER_KM
-    blocks["x_km"] = (table["x_m"].min() + blocks["block_x"] * block_m) / METRES_PER_KM
-    blocks["y_km"] = (table["y_m"].min() + blocks["block_y"] * block_m) / METRES_PER_KM
+    blocks = table[BLOCK_COLUMNS].drop_duplicates().copy()
+    x_start, y_start = get_tile_corner(table, tile_m)
+    blocks["x_km"] = (x_start + blocks["block_x"] * block_m) / METRES_PER_KM
+    blocks["y_km"] = (y_start + blocks["block_y"] * block_m) / METRES_PER_KM
     return blocks
 
 
@@ -101,17 +107,28 @@ def draw_blocks(
 
 
 def plot_tile_split(
-    table: pd.DataFrame, tile_m: float, output: Path, block_km: float
+    table: pd.DataFrame,
+    tile_m: float,
+    output: Path,
+    block_km: float,
+    region: tuple[float, float, float, float] | None = None,
 ) -> None:
-    """Save the three-panel map. table is the output of split_by_blocks."""
+    """Save the three-panel map. table is the output of split_by_blocks.
+
+    region is the rectangle (x_min, y_min, x_max, y_max in km) used as the area of analysis.
+    Without it, the area is the outline of the tiles.
+    """
     missing = [name for name in BLOCK_COLUMNS if name not in table.columns]
     if missing:
         msg = f"The table has no {missing} columns: run split_tiles.py again"
         raise ValueError(msg)
 
     tile_km = tile_m / METRES_PER_KM
-    blocks = get_blocks(table, block_km)
-    region = get_region(table, tile_km)
+    blocks = get_blocks(table, block_km, tile_m)
+    if region is None:
+        area = get_region(table, tile_km)
+    else:
+        area = box(*region)
     x_km = table["x_m"] / METRES_PER_KM
     y_km = table["y_m"] / METRES_PER_KM
 
@@ -119,7 +136,7 @@ def plot_tile_split(
     axes = fig.subplots(1, 3, sharex=True, sharey=True)
     panel_a, panel_b, panel_c = axes
     for ax in axes:
-        draw_region(ax, region)
+        draw_region(ax, area)
 
     # A: the blocks over the area of analysis
     draw_blocks(panel_a, blocks, block_km, alpha=0.9, filled=True)
@@ -152,11 +169,21 @@ def plot_tile_split(
             )
         )
 
-    # Axes limits: the whole grid of blocks
-    left = blocks["x_km"].min()
-    right = blocks["x_km"].max() + block_km
-    bottom = blocks["y_km"].min()
-    top = blocks["y_km"].max() + block_km
+    # Axes limits: the whole grid of blocks, or the region
+    if region is None:
+        left = blocks["x_km"].min()
+        right = blocks["x_km"].max() + block_km
+        bottom = blocks["y_km"].min()
+        top = blocks["y_km"].max() + block_km
+    else:
+        left, bottom, right, top = region
+        margin = 0.03 * max(right - left, top - bottom)
+        left, bottom, right, top = (
+            left - margin,
+            bottom - margin,
+            right + margin,
+            top + margin,
+        )
     for ax in axes:
         ax.set_xlim(left, right)
         ax.set_ylim(bottom, top)

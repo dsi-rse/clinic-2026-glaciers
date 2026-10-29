@@ -148,18 +148,61 @@ def check_no_leakage(
         raise ValueError(msg)
 
 
+def get_tile_corner(tiles: pd.DataFrame, tile_m: float) -> tuple[float, float]:
+    """Lower left corner (x, y in metres) of the area covered by the tiles.
+
+    Tile positions are centers, so the corner is half a tile below the lowest center.
+    """
+    half = tile_m / 2
+    return float(tiles["x_m"].min() - half), float(tiles["y_m"].min() - half)
+
+
+def get_grid_start(
+    tiles: pd.DataFrame, origin: tuple[float, float] | None
+) -> tuple[float, float]:
+    """Where the grid of blocks starts (x, y in metres): origin, or the corner of the tiles."""
+    if origin is not None:
+        return origin
+    return float(tiles["x_m"].min()), float(tiles["y_m"].min())
+
+
+def filter_region(
+    tiles: pd.DataFrame, tile_m: float, region_km: tuple[float, float, float, float]
+) -> pd.DataFrame:
+    """Keep the tiles that lie completely inside a rectangle.
+
+    region_km is (x_min, y_min, x_max, y_max) in km, in the same map system as the tiles.
+    Every tile is treated as a full-size square, so a smaller tile on the edge of a frame is
+    only kept when a full-size square would fit.
+    """
+    x_min, y_min, x_max, y_max = (value * METRES_PER_KM for value in region_km)
+    half = tile_m / 2
+    inside = (
+        (tiles["x_m"] - half >= x_min)
+        & (tiles["x_m"] + half <= x_max)
+        & (tiles["y_m"] - half >= y_min)
+        & (tiles["y_m"] + half <= y_max)
+    )
+    return tiles[inside].reset_index(drop=True)
+
+
 def locate_blocks(
-    tiles: pd.DataFrame, block_km: float, swap: bool = False
+    tiles: pd.DataFrame,
+    block_km: float,
+    swap: bool = False,
+    origin: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Find the block of each tile and the color of that block (train or test).
 
-    The grid of square blocks starts at the lower left corner of the tile centers. Returns
-    block_x and block_y (the block's column and row) and block_color ("train" or "test").
-    Blocks that share an edge always have opposite colors, like a checkerboard.
+    The grid of square blocks starts at origin (x, y in metres), or at the lower left corner
+    of the tile centers when origin is None. Returns block_x and block_y (the block's column
+    and row) and block_color ("train" or "test"). Blocks that share an edge always have
+    opposite colors, like a checkerboard.
     """
     block_m = block_km * METRES_PER_KM
-    block_x = ((tiles["x_m"] - tiles["x_m"].min()) // block_m).astype(int)
-    block_y = ((tiles["y_m"] - tiles["y_m"].min()) // block_m).astype(int)
+    x_start, y_start = get_grid_start(tiles, origin)
+    block_x = ((tiles["x_m"] - x_start) // block_m).astype(int)
+    block_y = ((tiles["y_m"] - y_start) // block_m).astype(int)
 
     # The color is the parity of the block's column plus its row
     is_first_color = (block_x + block_y) % 2 == 0
@@ -177,6 +220,7 @@ def assign_blocks(
     block_km: float,
     gap_km: float = 0.0,
     swap: bool = False,
+    origin: tuple[float, float] | None = None,
 ) -> pd.Series:
     """Label each tile "train", "test" or "gap" using square blocks in a checkerboard.
 
@@ -195,12 +239,13 @@ def assign_blocks(
         )
         raise ValueError(msg)
 
-    block_color = locate_blocks(tiles, block_km, swap)["block_color"]
+    block_color = locate_blocks(tiles, block_km, swap, origin)["block_color"]
     is_train_color = block_color == "train"
 
-    # Position of each tile center in the grid, which starts at the corner of the data
-    x_in_grid = tiles["x_m"] - tiles["x_m"].min()
-    y_in_grid = tiles["y_m"] - tiles["y_m"].min()
+    # Position of each tile center in the grid
+    x_start, y_start = get_grid_start(tiles, origin)
+    x_in_grid = tiles["x_m"] - x_start
+    y_in_grid = tiles["y_m"] - y_start
 
     # Distance from each tile center to the nearest block edge, along x and along y
     x_left = x_in_grid % block_m
@@ -233,6 +278,7 @@ def load_tiles(
     because reading them means waiting for a large download.
     """
     tileserver = load_tileserver(image_dir, cache_dir)
+    # All frames
     frames = find_frames(image_dir)
 
     if not include_online_only:
@@ -254,9 +300,16 @@ def split_by_blocks(
     block_km: float,
     gap_km: float = 0.0,
     swap: bool = False,
+    origin: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
-    """Add a split column (train, test or gap) with square blocks in a checkerboard."""
-    labels = assign_blocks(tiles, tile_m, block_km, gap_km, swap)
+    """Add a split column (train, test or gap) with square blocks in a checkerboard.
+
+    Unless origin is given, the grid starts at the lower left corner of the tiles, so the
+    blocks cover all the tiles that are left (for example after the bounding box).
+    """
+    if origin is None:
+        origin = get_tile_corner(tiles, tile_m)
+    labels = assign_blocks(tiles, tile_m, block_km, gap_km, swap, origin)
     check_no_leakage(tiles, labels, tile_m, gap_km)
-    blocks = locate_blocks(tiles, block_km, swap)
+    blocks = locate_blocks(tiles, block_km, swap, origin)
     return tiles.assign(split=labels, **blocks)

@@ -7,7 +7,14 @@ import pandas as pd
 import pytest
 
 from utils import tile_split
-from utils.tile_split import assign_blocks, check_no_leakage, find_frames
+from utils.tile_split import (
+    assign_blocks,
+    check_no_leakage,
+    filter_region,
+    find_frames,
+    locate_blocks,
+    split_by_blocks,
+)
 
 TILE_M = 40_960
 GAP_KM = 10
@@ -126,3 +133,32 @@ def test_a_normal_file_is_not_online_only(tmp_path: Path) -> None:
     frame.write_text("x")
     assert not tile_split.is_online_only(frame)
     assert find_frames(tmp_path) == [frame]
+
+
+def test_region_keeps_only_tiles_completely_inside() -> None:
+    """A tile is kept only if its whole square lies inside the rectangle."""
+    tiles = pd.DataFrame(
+        {
+            "x_m": [5_000.0, 4_999.0, 95_000.0, 95_001.0, 50_000.0],
+            "y_m": [5_000.0, 50_000.0, 50_000.0, 50_000.0, 50_000.0],
+        }
+    )
+    kept = filter_region(tiles, BLOCK_TILE_M, (0, 0, 100, 100))  # a 100 x 100 km box
+    assert kept["x_m"].tolist() == [5_000.0, 95_000.0, 50_000.0]
+
+
+def test_grid_starts_at_the_origin_when_given() -> None:
+    """With an origin, block columns count from the origin and not from the first tile."""
+    tiles = pd.DataFrame({"x_m": [50_000.0, 150_000.0], "y_m": [0.0, 0.0]})
+    default = locate_blocks(tiles, BLOCK_KM)
+    shifted = locate_blocks(tiles, BLOCK_KM, origin=(100_000.0, 0.0))
+    assert default["block_x"].tolist() == [0, 1]
+    assert shifted["block_x"].tolist() == [-1, 0]
+
+
+def test_split_starts_the_grid_at_the_corner_of_the_tiles() -> None:
+    """The first block begins at the edge of the lowest tile, so blocks cover every tile."""
+    tiles = pd.DataFrame({"x_m": [5_000.0, 150_000.0], "y_m": [5_000.0, 5_000.0]})
+    table = split_by_blocks(tiles, BLOCK_TILE_M, BLOCK_KM)
+    assert table["block_x"].tolist() == [0, 1]
+    assert table["block_y"].tolist() == [0, 0]

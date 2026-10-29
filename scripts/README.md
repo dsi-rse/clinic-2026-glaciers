@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | [`enhance_contrast.py`](#enhance_contrastpy) | Makes CLAHE and high-pass versions of NISAR tiles | `make enhance-contrast` |
 | [`split_tiles.py`](#split_tilespy) | Splits tiles into train and test with a checkerboard | `make split-tiles` |
+| [`plot_stack_tiles.py`](#plot_stack_tilespy) | Plots all the dates of one stack to see how the ice moves | `make plot-stack ARGS="--stack-id 077_A_140"` |
 
 ## Setup
 
@@ -21,6 +22,15 @@ Before you start:
 
 - Docker: Docker must be running, and `.env` must have `DATA_DIR` (see the main README).
 - `uv`: run `uv sync` once.
+
+Docker and Box on macOS: the container cannot read or overwrite Box files that are
+online-only (error `Resource deadlock avoided`). Make the frames available offline, and send
+the output to a local folder outside Box. `data/` in the repo is mounted in the container and
+ignored by git:
+
+```bash
+make enhance-contrast ARGS="--output-dir /project/data/test_out --n-frames 1 --n-tiles 1"
+```
 
 ---
 
@@ -199,3 +209,46 @@ Tiles from different frames overlap, so squares in B and C are semi-transparent.
 - All tiles come from one area, so the test score measures performance in this area, not on
   other glaciers. Data from other places is needed to test that.
 - There is no validation set yet, only train and test.
+
+## `plot_stack_tiles.py`
+
+### What it does
+
+Plots all the frames of one **stack** (the same place on different dates, 12 days apart) to see
+how the ice moves. A stack id is the track, the direction and the frame, for example `077_A_140`.
+You can also give the name of any frame of the stack.
+
+For every date the script cuts the frame into tiles (4096 px, about 41 km, by default), draws the
+tiles at their position on the map, and shows one panel per date with the same map limits. A last
+panel zooms in on the most textured spot covered by the first and the last date and overlays
+them: **red is the first date, cyan is the last date**. Where the ice did not move the overlay
+looks gray. Where it moved, red and cyan fringes appear. The code is in `src/utils/stack_plot.py`.
+
+### Run it
+
+```bash
+make plot-stack ARGS="--stack-id 077_A_140"           # Docker
+make plot-stack-local ARGS="--stack-id 077_A_140"     # uv
+
+uv run python scripts/plot_stack_tiles.py --stack-id 077_A_140 --zoom-km 20
+```
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `--stack-id` | required | Stack id like `077_A_140`, or the name of a frame of the stack. |
+| `--tile-size` | 4096 | Tile size in pixels (a multiple of 512). |
+| `--zoom-km` | 30 | Side of the zoomed overlay in km. |
+| `--include-online-only` | off | Also read frames that Box keeps online-only (slow). By default they are skipped and listed. |
+| `--image-dir` | `DATA_DIR/$LABELSTUDIO_IMAGE_SUBDIR` | Folder with the `.h5` frames. |
+| `--cache-dir` | `DATA_DIR/contrast_enhancement/stats_cache` | Shared with the other scripts. |
+| `--output-dir` | `DATA_DIR/stack_plots` | Where the PNG is written. |
+
+Output: one PNG per stack id, `stack_<stack id>_<tile size>px.png`.
+
+### Good to know
+
+- Only the dates that are downloaded are used. Online-only frames are skipped and listed, so a
+  stack may have fewer dates than it has frames. With one date there is nothing to compare.
+- The zoom goes to the most textured spot, which can be sea ice or icebergs at the ice front.
+  They move with the ocean and the wind, so their movement is not the speed of the glacier.
+- The picture only shows the movement. It does not measure it.

@@ -61,6 +61,15 @@ def tile_key(tile: Tile) -> str:
     return f"{tile['file']}|{tile['tile_size']}|{tile['row']}|{tile['col']}"
 
 
+def labelstudio_title(tile: Tile) -> str:
+    """Return the task title Label Studio shows for a tile (same text as setup.sh).
+
+    Paste it in the Data Manager filter (Title contains ...) to find the tile.
+    """
+    granule = tile["file"].rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return f"{granule}  ({tile['tile_size']} px tile, row {tile['row']}, col {tile['col']})"
+
+
 def load_tiles(tileserver: str, index_file: str | None) -> list[Tile]:
     """Load the tile list from a saved index file or from the tile server, sorted."""
     if index_file:
@@ -239,6 +248,7 @@ def build_spec(
                     "col": t["col"],
                     "tier": names[tier],
                     "order": i,
+                    "labelstudio_title": labelstudio_title(t),
                 }
                 for i, (t, tier) in enumerate(items, 1)
             ]
@@ -263,11 +273,26 @@ def write_master_csv(out: Assignments, names: list[str], csv_path: Path) -> None
     with csv_path.open("w", newline="") as f:
         w = csv.writer(f)
         w.writerow(
-            ["source_file", "tile_row", "tile_col", "tier", "reviewer_1", "reviewer_2"]
+            [
+                "source_file",
+                "tile_row",
+                "tile_col",
+                "tier",
+                "reviewer_1",
+                "reviewer_2",
+                "labelstudio_title",
+            ]
         )
         for tile, tier, who in rows:
             w.writerow(
-                [tile["file"], tile["row"], tile["col"], names[tier], *sorted(who)]
+                [
+                    tile["file"],
+                    tile["row"],
+                    tile["col"],
+                    names[tier],
+                    *sorted(who),
+                    labelstudio_title(tile),
+                ]
             )
 
 

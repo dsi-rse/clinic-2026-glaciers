@@ -85,6 +85,12 @@ def parse_args() -> argparse.Namespace:
         help="Bounding box in km, like in split_tiles.py. Without it, no tiles are removed.",
     )
     parser.add_argument(
+        "--date-prefix",
+        default="",
+        help="Only use frames whose start date begins with this, like split_tiles.py "
+        "(e.g. 202607 for July 2026). Default: all frames.",
+    )
+    parser.add_argument(
         "--stack-ids",
         nargs="+",
         help="Sample stacks to draw, like 077_A_140. Default: the stacks with most frames.",
@@ -370,7 +376,12 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        all_tiles, tile_m = load_tiles(args.image_dir, args.cache_dir, args.tile_size)
+        all_tiles, tile_m = load_tiles(
+            args.image_dir,
+            args.cache_dir,
+            args.tile_size,
+            date_prefix=args.date_prefix,
+        )
         tile_km = tile_m / METRES_PER_KM
         plot_study_area(
             all_tiles, tile_km, region, args.output_dir / "1_study_area.png"

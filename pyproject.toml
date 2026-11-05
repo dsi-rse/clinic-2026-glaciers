@@ -20,6 +20,9 @@ dependencies = [
   "scikit-image>=0.26.0",
   "scipy>=1.18.1",
   "shapely>=2.2.0",
+  "earthaccess>=0.19.0",
+  "geopandas>=1.2.0",
+  "requests>=2.34.2",
 ]
 
 [dependency-groups]

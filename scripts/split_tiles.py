@@ -93,6 +93,12 @@ def parse_args() -> argparse.Namespace:
         help="Also read frames that Box keeps online-only (slow: each one is downloaded).",
     )
     parser.add_argument(
+        "--date-prefix",
+        default="",
+        help="Only use frames whose start date begins with this, e.g. 202607 for July "
+        "2026 or 20260723 for one day. Default: all frames.",
+    )
+    parser.add_argument(
         "--plot",
         action="store_true",
         help="Also save a map (PNG) next to each CSV.",
@@ -167,7 +173,11 @@ def main() -> None:
             print(f"=== tiles of {tile_size} px")
             # Load tiles using the repository function
             tiles, tile_m = load_tiles(
-                args.image_dir, args.cache_dir, tile_size, args.include_online_only
+                args.image_dir,
+                args.cache_dir,
+                tile_size,
+                args.include_online_only,
+                args.date_prefix,
             )
             found = len(tiles)
             print(f"{found} tiles from {tiles['frame'].nunique()} frames")

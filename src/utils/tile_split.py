@@ -270,16 +270,30 @@ def load_tiles(
     cache_dir: Path,
     tile_size: int = DEFAULT_TILE_SIZE,
     include_online_only: bool = False,
+    date_prefix: str = "",
 ) -> tuple[pd.DataFrame, float]:
     """Find the tiles of every frame in image_dir. Returns the table and the tile width (m).
 
     The table has one row per tile: frame, row, col, x_m and y_m (the tile center).
     Frames that Box keeps online-only are skipped unless include_online_only is True,
     because reading them means waiting for a large download.
+    If date_prefix is given (for example "202607"), only the frames whose start date
+    begins with it are used.
     """
     tileserver = load_tileserver(image_dir, cache_dir)
     # All frames
     frames = find_frames(image_dir)
+
+    if date_prefix:
+        # The start date is the 12th part of the name: ..._A_20260723T015731_...
+        frames = [
+            frame
+            for frame in frames
+            if frame.name.split("_")[11].startswith(date_prefix)
+        ]
+        if not frames:
+            msg = f"No frames start with the date {date_prefix} in {image_dir}"
+            raise FileNotFoundError(msg)
 
     if not include_online_only:
         online_only = [frame for frame in frames if is_online_only(frame)]

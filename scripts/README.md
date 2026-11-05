@@ -175,6 +175,7 @@ uv run python scripts/split_tiles.py \
 | `--gap-km` | 0 | Extra distance kept free between train and test tiles. |
 | `--swap` | off | Swap train and test colors. |
 | `--plot` | off | Also save a map (PNG) next to each CSV. |
+| `--date-prefix` | all frames | Only use frames whose start date begins with this, e.g. `202607` for July 2026 or `20260723` for one day. |
 | `--include-online-only` | off | Also read frames that Box keeps online-only (skipped and listed by default, because each one has to be downloaded). |
 | `--image-dir` | `DATA_DIR/$LABELSTUDIO_IMAGE_SUBDIR` | Folder with the `.h5` frames (subfolders are searched too). |
 | `--cache-dir` | `DATA_DIR/contrast_enhancement/stats_cache` | Tile server cache. Shared with `enhance_contrast.py`. |
@@ -285,6 +286,7 @@ done
 | `--region` | off | Bounding box in km, like in `split_tiles.py`. |
 | `--gap-km` | 0 | Extra distance kept free between train and test tiles. |
 | `--swap` | off | Swap train and test colors. |
+| `--date-prefix` | all frames | Only use frames whose start date begins with this, e.g. `202607` for July 2026. Same as in `split_tiles.py`. |
 | `--stack-ids` | the stacks with most frames | Sample stacks to draw in pictures 3 and 4. They need tiles inside the box. |
 | `--n-stacks` | 2 | How many sample stacks when `--stack-ids` is not given. |
 | `--max-dates` | 3 | Most dates drawn per stack. |

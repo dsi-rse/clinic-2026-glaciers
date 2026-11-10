@@ -18,6 +18,7 @@ Examples:
 """
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -368,6 +369,9 @@ def main() -> None:
     if region is not None and not (region[0] < region[2] and region[1] < region[3]):
         sys.exit("--region needs X_MIN < X_MAX and Y_MIN < Y_MAX")
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    # Remove the settings of an older run: if this run fails, the pictures are not traceable
+    settings_path = args.output_dir / "settings.json"
+    settings_path.unlink(missing_ok=True)
 
     try:
         all_tiles, tile_m = load_tiles(args.image_dir, args.cache_dir, args.tile_size)
@@ -406,7 +410,18 @@ def main() -> None:
         region,
         args.output_dir / "4_sample_split.png",
     )
-    print(f"Saved the four pictures in {args.output_dir}")
+    settings = {
+        "tile_size_px": args.tile_size,
+        "block_km": args.block_km,
+        "gap_km": args.gap_km,
+        "swap": args.swap,
+        "region_km": list(region) if region else None,
+        "stack_ids": list(sample),
+        "max_dates": args.max_dates,
+        "image_dir": str(args.image_dir),
+    }
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"Saved the four pictures and settings.json in {args.output_dir}")
 
 
 if __name__ == "__main__":

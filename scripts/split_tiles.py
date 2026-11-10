@@ -22,8 +22,11 @@ Examples:
 """
 
 import argparse
+import hashlib
+import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -52,7 +55,8 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="CSV to write. The tile size and block size are added to the name.",
+        help="CSV to write. The settings of the run (tile size, block size, gap, swap, "
+        "region) are added to the name, so runs with other settings never overwrite it.",
     )
     parser.add_argument(
         "--tile-size",
@@ -106,6 +110,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def region_tag(region: tuple[float, float, float, float] | None) -> str:
+    """Short name part for the bounding box: "" without a box, else "_region_" and a code.
+
+    The code comes from the coordinates, so another box gives another name. The exact
+    coordinates are in the settings file (.json) next to the CSV.
+    """
+    if region is None:
+        return ""
+    code = hashlib.sha256(",".join(f"{x:g}" for x in region).encode()).hexdigest()
+    return f"_region_{code[:6]}"
+
+
+def gap_swap_tag(gap_km: float, swap: bool) -> str:
+    """Name part for the gap and the swap, for example "_gap_5km_swap"."""
+    return f"_gap_{gap_km:g}km" + ("_swap" if swap else "")
+
+
 def save_split(
     table: pd.DataFrame,
     csv_path: Path,
@@ -113,8 +134,12 @@ def save_split(
     block_km: float,
     plot: bool,
     region: tuple[float, float, float, float] | None,
+    settings: dict,
 ) -> None:
-    """Print a summary, save the CSV and, if asked, the map."""
+    """Print a summary, save the CSV, the settings (.json) and, if asked, the map.
+
+    The CSV, the settings and the map share one name, which holds the settings of the run.
+    """
     counts = table["split"].value_counts()
     print(
         f"{len(table)} tiles: " + ", ".join(f"{n} {name}" for name, n in counts.items())
@@ -123,10 +148,28 @@ def save_split(
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     table.to_csv(csv_path, index=False)
     print(f"Saved {csv_path}")
+
+    png_path = csv_path.with_suffix(".png")
     if plot:
-        png_path = csv_path.with_suffix(".png")
         plot_tile_split(table, tile_m, png_path, block_km, region)
         print(f"Saved {png_path}")
+    elif png_path.exists():
+        # A map with the same name comes from an older run (for example with other frames
+        # because of --include-online-only), so it could disagree with the new CSV.
+        png_path.unlink()
+        print(f"Removed the old map {png_path.name}: it did not come from this run")
+
+    settings = {
+        **settings,
+        "created": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "csv": csv_path.name,
+        "map": png_path.name if plot else None,
+        "n_tiles": len(table),
+        **{f"n_{name}": int(n) for name, n in counts.items()},
+    }
+    json_path = csv_path.with_suffix(".json")
+    json_path.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"Saved {json_path}")
 
 
 def summarize(
@@ -135,6 +178,7 @@ def summarize(
     tile_m: float,
     block_km: float,
     gap_km: float,
+    swap: bool,
     found: int,
 ) -> dict:
     """One row of the summary: how many tiles were found, kept for train and test, dropped."""
@@ -145,6 +189,7 @@ def summarize(
         "tile_km": round(tile_m / 1000, 2),
         "block_km": block_km,
         "gap_km": gap_km,
+        "swap": swap,
         "tiles_found": found,
         "outside_region": found - in_region,
         "in_region": in_region,
@@ -165,7 +210,6 @@ def main() -> None:
     region = tuple(args.region) if args.region else None
     if region is not None and not (region[0] < region[2] and region[1] < region[3]):
         sys.exit("--region needs X_MIN < X_MAX and Y_MIN < Y_MAX")
-    region_tag = "_region" if region else ""
 
     summary = []
     try:
@@ -196,7 +240,21 @@ def main() -> None:
                 except ValueError as error:
                     print(f"Skipped: {error}")
                     continue
-                name = f"{args.output.stem}{region_tag}_{tile_size}px_blocks_{block_km:g}km{args.output.suffix}"
+                name = (
+                    f"{args.output.stem}{region_tag(region)}_{tile_size}px"
+                    f"_blocks_{block_km:g}km{gap_swap_tag(args.gap_km, args.swap)}"
+                    f"{args.output.suffix}"
+                )
+                settings = {
+                    "tile_size_px": tile_size,
+                    "tile_km": round(tile_m / 1000, 2),
+                    "block_km": block_km,
+                    "gap_km": args.gap_km,
+                    "swap": args.swap,
+                    "region_km": list(region) if region else None,
+                    "include_online_only": args.include_online_only,
+                    "image_dir": str(args.image_dir),
+                }
                 save_split(
                     table,
                     args.output.with_name(name),
@@ -204,17 +262,30 @@ def main() -> None:
                     block_km,
                     args.plot,
                     region,
+                    settings,
                 )
                 summary.append(
-                    summarize(table, tile_size, tile_m, block_km, args.gap_km, found)
+                    summarize(
+                        table,
+                        tile_size,
+                        tile_m,
+                        block_km,
+                        args.gap_km,
+                        args.swap,
+                        found,
+                    )
                 )
     except (ValueError, FileNotFoundError) as error:
         sys.exit(f"Cannot split: {error}")
 
     if summary:
         table = pd.DataFrame(summary)
+        # The name holds every setting of the run, so another run never overwrites it
+        sizes = "-".join(str(size) for size in args.tile_size)
+        blocks = "-".join(f"{block:g}" for block in args.block_km)
         summary_path = args.output.with_name(
-            f"{args.output.stem}{region_tag}_summary.csv"
+            f"{args.output.stem}{region_tag(region)}_{sizes}px_blocks_{blocks}km"
+            f"{gap_swap_tag(args.gap_km, args.swap)}_summary.csv"
         )
         table.to_csv(summary_path, index=False)
         print()

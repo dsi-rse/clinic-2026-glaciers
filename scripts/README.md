@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | [`enhance_contrast.py`](#enhance_contrastpy) | Makes CLAHE and high-pass versions of NISAR tiles | `make enhance-contrast` |
 | [`split_tiles.py`](#split_tilespy) | Splits tiles into train and test with a checkerboard | `make split-tiles` |
-| [`plot_split_steps.py`](#plot_split_stepspy) | Draws the split in four pictures: study area, blocks, sample tiles, tiles after the split | `make plot-split-steps ARGS="--block-km 40.96"` |
+| [`plot_split_steps.py`](#plot_split_stepspy) | Draws the split in four pictures: study area, blocks, sample tiles, tiles after the split | `make plot-split-steps ARGS="--tile-size 1024 --block-km 40.96"` |
 | [`plot_ice_movement.py`](#plot_ice_movementpy) | Plots all the dates of one stack to see how the ice moves | `make plot-ice-movement ARGS="--stack-id 077_A_140"` |
 
 ## Setup
@@ -179,11 +179,19 @@ uv run python scripts/split_tiles.py \
 | `--include-online-only` | off | Also read frames that Box keeps online-only (skipped and listed by default, because each one has to be downloaded). |
 | `--image-dir` | `DATA_DIR/$LABELSTUDIO_IMAGE_SUBDIR` | Folder with the `.h5` frames (subfolders are searched too). |
 | `--cache-dir` | `DATA_DIR/contrast_enhancement/stats_cache` | Tile server cache. Shared with `enhance_contrast.py`. |
-| `--output` | `DATA_DIR/splits/tile_split.csv` | Tile and block size are added to the name, e.g. `tile_split_1024px_blocks_60km.csv`. |
+| `--output` | `DATA_DIR/splits/tile_split.csv` | The settings of the run are added to the name, e.g. `tile_split_1024px_blocks_60km_gap_5km_swap.csv` (see Output). |
 
 ### Output
 
-**CSV:** one per block size, one row per tile.
+**CSV:** one per block size, one row per tile. The name holds the settings of the run, so runs
+with other settings (another gap, `--swap`, another box) write other files and never overwrite
+each other: `tile_split[_region_<code>]_<tile>px_blocks_<block>km_gap_<gap>km[_swap].csv`.
+The code after `_region_` comes from the box coordinates (the exact values are in the `.json`).
+Running the same settings again overwrites the same files with the same result.
+
+**Settings (`.json`):** saved next to each CSV with the same name. It has the tile size, block
+size, gap, swap, box, image folder, when it ran, the number of tiles and the name of the map.
+Use it to know how a CSV was made.
 
 | Column | Meaning |
 | --- | --- |
@@ -193,12 +201,16 @@ uv run python scripts/split_tiles.py \
 | `block_x`, `block_y` | The tile's block. |
 | `block_color` | Whether that block is train or test. |
 
-**Summary** (with `--region`): `<output name>_region_summary.csv`, one row per tile size and
-block size: `tiles_found`, `outside_region`, `in_region`, `train`, `test`, `dropped` and
+**Map** (`--plot`): same name as the CSV, ending in `.png`, so a CSV and its map always match.
+If you run again without `--plot`, an old map with the same name is removed, so a map never
+shows something different from its CSV.
+
+**Summary:** `<output name>[_region_<code>]_<tile sizes>px_blocks_<block sizes>km_gap_<gap>km[_swap]_summary.csv`,
+one row per tile size and block size: `tiles_found`, `outside_region`, `in_region`, `train`, `test`, `dropped` and
 `dropped_pct` (the share of the tiles inside the box). Combinations where the block is too
 small for the tile are skipped with a message.
 
-**Map** (`--plot`): one PNG per block size, three panels side by side. Legends are below the
+**Map contents:** one PNG per block size, three panels side by side. Legends are below the
 plots. With `--region`, the blocks are cut at the box.
 
 | Panel | Shows |
@@ -291,7 +303,7 @@ done
 | `--n-stacks` | 2 | How many sample stacks when `--stack-ids` is not given. |
 | `--max-dates` | 3 | Most dates drawn per stack. |
 | `--image-dir`, `--cache-dir` | as in `split_tiles.py` | Frames and tile server cache. |
-| `--output-dir` | `DATA_DIR/split_steps` | Folder for the four pictures. A new run overwrites files with the same name. |
+| `--output-dir` | `DATA_DIR/split_steps` | Folder for the four pictures and a `settings.json` with the options of the run. A new run overwrites them, so use another folder for another set of options. |
 
 ### Good to know
 

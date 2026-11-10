@@ -122,9 +122,10 @@ def region_tag(region: tuple[float, float, float, float] | None) -> str:
     return f"_region_{code[:6]}"
 
 
-def gap_swap_tag(gap_km: float, swap: bool) -> str:
-    """Name part for the gap and the swap, for example "_gap_5km_swap"."""
-    return f"_gap_{gap_km:g}km" + ("_swap" if swap else "")
+def gap_swap_tag(gap_km: float, swap: bool, date_prefix: str = "") -> str:
+    """Name part for the gap, the swap and the dates, for example "_gap_5km_swap_date_202607"."""
+    date = f"_date_{date_prefix}" if date_prefix else ""
+    return f"_gap_{gap_km:g}km" + ("_swap" if swap else "") + date
 
 
 def save_split(
@@ -242,7 +243,7 @@ def main() -> None:
                     continue
                 name = (
                     f"{args.output.stem}{region_tag(region)}_{tile_size}px"
-                    f"_blocks_{block_km:g}km{gap_swap_tag(args.gap_km, args.swap)}"
+                    f"_blocks_{block_km:g}km{gap_swap_tag(args.gap_km, args.swap, args.date_prefix)}"
                     f"{args.output.suffix}"
                 )
                 settings = {
@@ -253,6 +254,7 @@ def main() -> None:
                     "swap": args.swap,
                     "region_km": list(region) if region else None,
                     "include_online_only": args.include_online_only,
+                    "date_prefix": args.date_prefix or None,
                     "image_dir": str(args.image_dir),
                 }
                 save_split(
@@ -285,7 +287,7 @@ def main() -> None:
         blocks = "-".join(f"{block:g}" for block in args.block_km)
         summary_path = args.output.with_name(
             f"{args.output.stem}{region_tag(region)}_{sizes}px_blocks_{blocks}km"
-            f"{gap_swap_tag(args.gap_km, args.swap)}_summary.csv"
+            f"{gap_swap_tag(args.gap_km, args.swap, args.date_prefix)}_summary.csv"
         )
         table.to_csv(summary_path, index=False)
         print()

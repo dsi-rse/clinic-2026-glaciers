@@ -185,7 +185,7 @@ uv run python scripts/split_tiles.py \
 
 **CSV:** one per block size, one row per tile. The name holds the settings of the run, so runs
 with other settings (another gap, `--swap`, another box) write other files and never overwrite
-each other: `tile_split[_region_<code>]_<tile>px_blocks_<block>km_gap_<gap>km[_swap].csv`.
+each other: `tile_split[_region_<code>]_<tile>px_blocks_<block>km_gap_<gap>km[_swap][_date_<prefix>].csv`.
 The code after `_region_` comes from the box coordinates (the exact values are in the `.json`).
 Running the same settings again overwrites the same files with the same result.
 
@@ -205,7 +205,7 @@ Use it to know how a CSV was made.
 If you run again without `--plot`, an old map with the same name is removed, so a map never
 shows something different from its CSV.
 
-**Summary:** `<output name>[_region_<code>]_<tile sizes>px_blocks_<block sizes>km_gap_<gap>km[_swap]_summary.csv`,
+**Summary:** `<output name>[_region_<code>]_<tile sizes>px_blocks_<block sizes>km_gap_<gap>km[_swap][_date_<prefix>]_summary.csv`,
 one row per tile size and block size: `tiles_found`, `outside_region`, `in_region`, `train`, `test`, `dropped` and
 `dropped_pct` (the share of the tiles inside the box). Combinations where the block is too
 small for the tile are skipped with a message.

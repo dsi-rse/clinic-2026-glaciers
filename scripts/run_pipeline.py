@@ -7,6 +7,10 @@ The steps run in this order. Each one uses a script that already exists in the r
     3. tiles        List of the tiles to label, from the split CSV (the gap tiles are left out)
     4. assign       Assign the tiles to the labelers           (labelstudio/assign_tiles.py)
 
+With --augmentation (high_pass, black_tophat, clahe or unsharp_mask) the assignment uses the
+augmented frames <name>_<method>.h5, which must already be in the same folder as the original
+frames. The split always uses the originals, so it is the same for every method.
+
 Label Studio is not part of the pipeline: each person loads their own tiles by hand when it
 finishes (the pipeline prints how, and labelstudio/ASSIGNMENTS.md has the details).
 
@@ -17,6 +21,7 @@ pipeline_settings.json that says how it was made. Use --until to stop after a st
 Examples:
     uv run python scripts/run_pipeline.py
     uv run python scripts/run_pipeline.py --until tiles
+    uv run python scripts/run_pipeline.py --augmentation black_tophat
     uv run python scripts/run_pipeline.py --region 1700 620 2200 800 --block-km 122.88
 """
 
@@ -30,6 +35,12 @@ import sys
 from pathlib import Path
 
 from utils.settings import DATA_DIR
+from utils.tile_split import (
+    AUGMENTATION_METHODS,
+    filter_frames_by_date,
+    find_frames,
+    is_augmented,
+)
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 STEPS = ("box", "split", "tiles", "assign")
@@ -80,9 +91,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--augmentation",
-        choices=["none", "clahe", "highpass"],
+        choices=["none", *AUGMENTATION_METHODS],
         default="none",
-        help="Image augmentation before labeling. Not connected yet: only none works.",
+        help="Read the augmented frames <name>_<method>.h5 (in --image-dir, next to the "
+        "originals) for the assignment and Label Studio. The split always uses the originals.",
     )
     parser.add_argument(
         "--name",
@@ -110,7 +122,7 @@ def get_settings(args: argparse.Namespace) -> dict:
     The frames folder is not in it: Docker and uv write the same folder, and they see the
     frames at different paths.
     """
-    return {
+    settings = {
         "date_prefix": args.date_prefix,
         "region_km": list(args.region),
         "tile_size_px": args.tile_size,
@@ -121,6 +133,11 @@ def get_settings(args: argparse.Namespace) -> dict:
         "seed": args.seed,
         "tiers": args.tiers,
     }
+    if args.augmentation != "none":
+        settings["augmentation"] = (
+            args.augmentation
+        )  # not saved for none: same name as before
+    return settings
 
 
 def get_run_name(args: argparse.Namespace) -> str:
@@ -150,6 +167,30 @@ def save_settings(run_dir: Path, args: argparse.Namespace) -> None:
     path.write_text(
         json.dumps({**settings, "image_dir": str(args.image_dir)}, indent=2) + "\n"
     )
+
+
+def check_augmented_frames(args: argparse.Namespace) -> None:
+    """Stop if a frame of the chosen dates has no augmented copy (<name>_<method>.h5)."""
+    if args.augmentation == "none":
+        return
+    try:
+        frames = find_frames(args.image_dir)
+        originals = [frame for frame in frames if not is_augmented(frame)]
+        originals = filter_frames_by_date(originals, args.date_prefix, args.image_dir)
+    except (FileNotFoundError, ValueError) as error:
+        sys.exit(f"Cannot check the frames: {error}")
+    missing = [
+        f"{frame.stem}_{args.augmentation}{frame.suffix}"
+        for frame in originals
+        if not frame.with_name(
+            f"{frame.stem}_{args.augmentation}{frame.suffix}"
+        ).exists()
+    ]
+    if missing:
+        sys.exit(
+            f"{len(missing)} {args.augmentation} frame(s) not found next to the originals, "
+            "for example:\n  " + missing[0] + "\nMake the augmented frames first."
+        )
 
 
 def split_command(args: argparse.Namespace, run_dir: Path) -> list[str]:
@@ -205,7 +246,7 @@ def assign_command(
     args: argparse.Namespace, split_csv: Path, assignments: Path
 ) -> list[str]:
     """The command of step 4: assign_tiles.py, reading the split CSV."""
-    return [
+    command = [
         sys.executable,
         str(REPO_DIR / "labelstudio" / "assign_tiles.py"),
         "--split-csv",
@@ -223,6 +264,9 @@ def assign_command(
         "--out",
         str(assignments),
     ]
+    if args.augmentation != "none":
+        command += ["--augmentation", args.augmentation]
+    return command
 
 
 def run(command: list[str], env: dict[str, str] | None = None) -> None:
@@ -236,24 +280,24 @@ def run(command: list[str], env: dict[str, str] | None = None) -> None:
 def main() -> None:
     """Run the steps in order, up to --until."""
     args = parse_args()
-    if args.augmentation != "none":
-        sys.exit(
-            f"--augmentation {args.augmentation} is not connected to Label Studio yet "
-            "(the team has not decided). Use --augmentation none."
-        )
     check_region(args.region)
     run_dir = args.run_dir or DEFAULT_RUN_ROOT / get_run_name(args)
     run_dir.mkdir(parents=True, exist_ok=True)
-    assignments = run_dir / f"tile_assignments_{args.tile_size}_seed{args.seed}.json"
+    method = "" if args.augmentation == "none" else f"_{args.augmentation}"
+    assignments = (
+        run_dir / f"tile_assignments_{args.tile_size}_seed{args.seed}{method}.json"
+    )
     last = STEPS.index(args.until)
 
     print(f"Pipeline folder: {run_dir}")
     print(
         f"Settings: dates {args.date_prefix or 'all'}, {args.tile_size} px tiles, "
-        f"{args.block_km:g} km blocks, gap {args.gap_km:g} km, seed {args.seed}"
+        f"{args.block_km:g} km blocks, gap {args.gap_km:g} km, seed {args.seed}, "
+        f"augmentation {args.augmentation}"
     )
     print("\n=== Step 1/4 box")
     print(f"Bounding box (km): {' '.join(str(v) for v in args.region)}")
+    check_augmented_frames(args)
     save_settings(run_dir, args)
 
     if last >= STEPS.index("split"):
@@ -293,6 +337,14 @@ def main() -> None:
             "  LABELSTUDIO_MAX_TIER=small\n"
             f"  TILESERVER_TILE_SIZE={args.tile_size}\n"
             "Write the full path of the file on your computer, not ~."
+            + (
+                f"\nThe tiles are the {args.augmentation} frames "
+                "(<name>_"
+                + args.augmentation
+                + ".h5) in the same folder as the originals."
+                if args.augmentation != "none"
+                else ""
+            )
         )
 
 

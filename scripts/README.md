@@ -413,6 +413,21 @@ make pipeline-local ARGS="--region 1700 620 2200 800 --block-km 122.88"
 
 `make pipeline` is the same with Docker. When it finishes it prints the lines each person adds to `.env`.
 
+### Augmentation
+
+The augmented frames are made outside the pipeline and saved **in the same folder as the original frames**,
+named `<original name>_<method>.h5`, for example `NISAR_..._001_black_tophat.h5`. With `--augmentation black_tophat`:
+
+- The **split uses the original frames** (augmented files are ignored), so train and test are exactly the same for
+  every method and for no augmentation. Methods can be compared fairly.
+- The **assignment uses the augmented frames**: the JSON has `..._black_tophat.h5`, so Label Studio shows those tiles.
+- The pipeline stops at the start, naming a missing file, if a frame has no augmented copy.
+- Each method has its own run folder, and the JSON file name ends with the method, for example `..._seed42_black_tophat.json`.
+- Each person uses the same `LABELSTUDIO_IMAGE_SUBDIR` as before. Only the JSON changes.
+
+Augmented files in that folder are ignored by `split_tiles.py` and `plot_split_steps.py` too (also names like
+`..._black_tophat_r4.h5`). Without `--augmentation`, the pipeline uses the original frames as before.
+
 ### After the pipeline: load your tiles (by hand)
 
 Add these lines to your `.env` (the pipeline prints them with your real file path), then run `make labelstudio`:
@@ -440,6 +455,6 @@ Use the **JSON**, not the CSVs: only the JSON has your order. Details: `labelstu
 | `--people` | Jeanne Bailey Sophie Alexandra | Names, spelled as in `LABELSTUDIO_ASSIGNEE`. |
 | `--seed` | 42 | The same seed gives the same assignment. Do not change it after people start labeling. |
 | `--tiers` | `10% 30% 100%` | Sizes of the small, medium and large batches. They are percentages, so they follow the number of tiles in the box. Counts (`50 150 405`) also work. |
-| `--augmentation` | `none` | CLAHE or high-pass before labeling. **Not connected yet**: the team has not decided, so only `none` works. |
+| `--augmentation` | `none` | `high_pass`, `black_tophat`, `clahe` or `unsharp_mask`: the assignment and Label Studio use the augmented frames `<name>_<method>.h5` (see below). The split is not changed. |
 | `--name` | `run_<code>` | Name of the folder in `data/pipeline`. |
 | `--run-dir` | `data/pipeline/<run name>` | Full folder of this run, instead of `--name` (to write somewhere else). |

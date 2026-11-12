@@ -14,6 +14,7 @@ from utils.tile_split import (
     filter_region,
     find_frames,
     get_start_date,
+    is_augmented,
     locate_blocks,
     split_by_blocks,
 )
@@ -214,3 +215,14 @@ def test_unexpected_file_name_gives_a_clear_message(name: str) -> None:
 def test_start_date_is_read_from_the_name() -> None:
     """The start date and time is the 12th part of the name."""
     assert get_start_date(make_frames({"041": "20260723"})[0]) == "20260723T015731"
+
+
+@pytest.mark.parametrize(
+    "method", ["high_pass", "black_tophat", "clahe", "unsharp_mask"]
+)
+def test_augmented_frames_are_recognized(method: str) -> None:
+    """A frame with a method name at the end is augmented, also with an extra part like _r4."""
+    original = make_frames({"041": "20260723"})[0]
+    assert not is_augmented(original)
+    assert is_augmented(original.with_name(f"{original.stem}_{method}.h5"))
+    assert is_augmented(original.with_name(f"{original.stem}_{method}_r4.h5"))

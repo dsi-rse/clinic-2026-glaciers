@@ -148,11 +148,79 @@ def test_assign_command_reads_the_split_csv(
     assert command[command.index("--out") + 1] == str(tmp_path / "a.json")
 
 
-def test_augmentation_is_not_connected_yet(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Asking for an augmentation stops before anything runs."""
-    monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--augmentation", "clahe"])
-    with pytest.raises(SystemExit, match="not connected"):
-        run_pipeline.main()
+def make_frames_on_disk(folder: Path, *methods: str) -> Path:
+    """An original frame, plus an augmented copy of it for each method."""
+    original = (
+        folder
+        / "NISAR_L2_PR_GCOV_026_041_A_142_4005_SHSH_A_20260723T015731_20260723T015807_P05023_N_F_J_001.h5"
+    )
+    original.touch()
+    for method in methods:
+        original.with_name(f"{original.stem}_{method}.h5").touch()
+    return original
+
+
+def test_the_four_methods_are_the_ones_of_the_team() -> None:
+    """The choices are high_pass, black_tophat, clahe and unsharp_mask (and none)."""
+    assert set(run_pipeline.AUGMENTATION_METHODS) == {
+        "high_pass", "black_tophat", "clahe", "unsharp_mask",
+    }  # fmt: skip
+
+
+def test_no_augmentation_keeps_the_run_name_and_other_methods_change_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The name for none does not depend on the new option. Each method has its own folder."""
+    none = run_pipeline.get_run_name(make_args(monkeypatch, "--augmentation", "none"))
+    default = run_pipeline.get_run_name(make_args(monkeypatch))
+    tophat = run_pipeline.get_run_name(
+        make_args(monkeypatch, "--augmentation", "black_tophat")
+    )
+    clahe = run_pipeline.get_run_name(make_args(monkeypatch, "--augmentation", "clahe"))
+    assert none == default
+    assert len({none, tophat, clahe}) == 3  # noqa: PLR2004
+
+
+def test_assign_command_asks_for_the_augmented_frames(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With a method, step 4 gets --augmentation. Without one, it does not."""
+    plain = run_pipeline.assign_command(
+        make_args(monkeypatch), tmp_path / "s.csv", tmp_path / "a.json"
+    )
+    tophat = run_pipeline.assign_command(
+        make_args(monkeypatch, "--augmentation", "black_tophat"),
+        tmp_path / "s.csv",
+        tmp_path / "a.json",
+    )
+    assert "--augmentation" not in plain
+    assert tophat[tophat.index("--augmentation") + 1] == "black_tophat"
+
+
+def test_missing_augmented_frames_stop_the_pipeline_at_the_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """If a frame has no <name>_<method>.h5 next to it, the message names the missing file."""
+    make_frames_on_disk(tmp_path)  # no augmented copy
+    args = make_args(
+        monkeypatch, "--augmentation", "black_tophat", "--image-dir", str(tmp_path)
+    )
+    with pytest.raises(SystemExit, match="_black_tophat.h5"):
+        run_pipeline.check_augmented_frames(args)
+
+
+def test_augmented_frames_that_exist_pass_the_check(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With the augmented copy next to the original, the check passes. Without a method it does nothing."""
+    make_frames_on_disk(tmp_path, "black_tophat")
+    args = make_args(
+        monkeypatch, "--augmentation", "black_tophat", "--image-dir", str(tmp_path)
+    )
+    run_pipeline.check_augmented_frames(args)
+    run_pipeline.check_augmented_frames(
+        make_args(monkeypatch, "--image-dir", str(tmp_path))
+    )
 
 
 def test_runs_are_written_in_the_repo_not_in_data_dir() -> None:

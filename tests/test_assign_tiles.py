@@ -214,3 +214,40 @@ def test_person_csv_has_the_order_of_each_person(tiles: list, tmp_path: Path) ->
         assert [r["labelstudio_title"] for r in mine] == [
             a["labelstudio_title"] for a in expected
         ]
+
+
+def test_augmentation_reads_the_augmented_copy_of_each_frame(tmp_path: Path) -> None:
+    """With black_tophat, the tiles are the same but the frames are <name>_black_tophat.h5."""
+    csv_path = tmp_path / "split.csv"
+    write_split_csv(csv_path)
+    paths = {
+        f"{Path(name).stem}_black_tophat.h5": f"july/{Path(name).stem}_black_tophat.h5"
+        for name in FRAMES
+    }
+    plain = assign_tiles.load_tiles_from_split(
+        str(csv_path), TILE_SIZE, {n: n for n in FRAMES}
+    )
+    augmented = assign_tiles.load_tiles_from_split(
+        str(csv_path), TILE_SIZE, paths, "black_tophat"
+    )
+    assert [(t["row"], t["col"]) for t in plain] == [
+        (t["row"], t["col"]) for t in augmented
+    ]
+    assert all(t["file"].endswith("_black_tophat.h5") for t in augmented)
+
+
+def test_missing_augmented_frame_says_to_make_it_first(tmp_path: Path) -> None:
+    """If the augmented copy is not in the image folder, the message says so."""
+    csv_path = tmp_path / "split.csv"
+    write_split_csv(csv_path)
+    with pytest.raises(SystemExit, match="clahe"):
+        assign_tiles.load_tiles_from_split(
+            str(csv_path), TILE_SIZE, {n: n for n in FRAMES}, "clahe"
+        )
+
+
+def test_the_method_list_is_the_same_in_both_scripts() -> None:
+    """assign_tiles.py cannot import utils, so its list is a copy: it must not drift."""
+    from utils.tile_split import AUGMENTATION_METHODS  # noqa: PLC0415
+
+    assert assign_tiles.AUGMENTATION_METHODS == AUGMENTATION_METHODS

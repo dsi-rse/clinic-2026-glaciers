@@ -161,3 +161,8 @@ python3 labelstudio/assign_tiles.py \
 - The tile server also offers the August frames and the tiles outside the bounding box, so
   `make labelstudio` prints `WARNING: N tile(s) in your data are not in the assignment file`. For Amery this is
   expected: those tiles are not assigned and are not loaded.
+
+**With an augmentation.** Add `--augmentation black_tophat` (or `high_pass`, `clahe`, `unsharp_mask`) to the command.
+The tiles and the split stay the same, but the JSON names the frames `<name>_black_tophat.h5`, so Label Studio shows
+the augmented tiles. Those files must already be in `--image-dir`, next to the originals. Everyone must use the same
+JSON, so the same method.

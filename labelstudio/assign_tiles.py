@@ -18,7 +18,9 @@ The tile list comes from the tile server (`make labelstudio` starts it), the sam
 /index endpoint the setup script uses. With --split-csv it comes from a train/test split
 CSV instead (the output of split_tiles.py): the `gap` tiles are left out and --tile-size
 gives the tile size of that split, and --image-dir the folder with the frames, so the frame
-paths are the ones Label Studio uses (also when the frames are in subfolders).
+paths are the ones Label Studio uses (also when the frames are in subfolders). With
+--augmentation (for example black_tophat) the tiles are read from the augmented frames
+<name>_black_tophat.h5 that sit next to the originals; the split is not changed.
 
 Examples:
     python3 assign_tiles.py --split-csv splits/tile_split_region_2048px_blocks_163.84km.csv \
@@ -55,6 +57,9 @@ Tile = dict[str, Any]
 Assignments = dict[str, list[tuple[Tile, int]]]
 
 DEFAULT_TIER_NAMES = ("small", "medium", "large")
+# Augmented frames are saved next to the originals as <original name>_<method>.h5
+# (the same list is in src/utils/tile_split.py; a test checks that they match)
+AUGMENTATION_METHODS = ("high_pass", "black_tophat", "clahe", "unsharp_mask")
 URL_TIMEOUT_SECONDS = 3600  # the tile server's first scan of a big frame can be slow
 
 
@@ -112,7 +117,10 @@ def find_frame_paths(image_dir: str) -> dict[str, str]:
 
 
 def load_tiles_from_split(
-    csv_path: str, tile_size: int, frame_paths: dict[str, str]
+    csv_path: str,
+    tile_size: int,
+    frame_paths: dict[str, str],
+    augmentation: str | None = None,
 ) -> list[Tile]:
     """Load the tiles to label from a split CSV written by split_tiles.py.
 
@@ -120,19 +128,24 @@ def load_tiles_from_split(
     The CSV has no tile size column, so it is given with --tile-size. Each frame name is
     changed to its path below the image folder (frame_paths, from find_frame_paths), so the
     tiles match the ones Label Studio loads.
+    With an augmentation (for example "black_tophat"), the tiles are read from the augmented
+    copy of each frame: NISAR_..._001.h5 becomes NISAR_..._001_black_tophat.h5. The split
+    itself is the same, because it was made on the original frames.
     """
     tiles = []
     with Path(csv_path).open(newline="") as f:
         for row in csv.DictReader(f):
             if row["split"] == "gap":
                 continue
-            if row["frame"] not in frame_paths:
-                sys.exit(
-                    f"The split CSV has the frame {row['frame']}, not found in --image-dir."
-                )
+            frame = row["frame"]
+            if augmentation:
+                frame = f"{Path(frame).stem}_{augmentation}{Path(frame).suffix}"
+            if frame not in frame_paths:
+                hint = f" Make the {augmentation} frames first." if augmentation else ""
+                sys.exit(f"The frame {frame} was not found in --image-dir.{hint}")
             tiles.append(
                 {
-                    "file": frame_paths[row["frame"]],
+                    "file": frame_paths[frame],
                     "tile_size": tile_size,
                     "row": int(row["row"]),
                     "col": int(row["col"]),
@@ -425,6 +438,13 @@ def parse_args() -> argparse.Namespace:
         help="Tile size in pixels of the split CSV, e.g. 2048 (only with --split-csv)",
     )
     ap.add_argument(
+        "--augmentation",
+        choices=AUGMENTATION_METHODS,
+        default=None,
+        help="Use the augmented copy of each frame (<name>_<method>.h5, in --image-dir) "
+        "instead of the original (only with --split-csv). The split is not changed.",
+    )
+    ap.add_argument(
         "--image-dir",
         default=None,
         help="Folder with the .h5 frames: the same folder the tile server reads, i.e. "
@@ -446,6 +466,8 @@ def main() -> None:
 
     if len(set(args.people)) != len(args.people):
         sys.exit("Names in --people must be unique.")
+    if args.augmentation and not args.split_csv:
+        sys.exit("--augmentation needs --split-csv (and --image-dir).")
     if args.split_csv:
         if not args.tile_size:
             sys.exit("--split-csv needs --tile-size (for example --tile-size 2048).")
@@ -455,7 +477,9 @@ def main() -> None:
                 "(DATA_DIR/LABELSTUDIO_IMAGE_SUBDIR)."
             )
         frame_paths = find_frame_paths(args.image_dir)
-        tiles = load_tiles_from_split(args.split_csv, args.tile_size, frame_paths)
+        tiles = load_tiles_from_split(
+            args.split_csv, args.tile_size, frame_paths, args.augmentation
+        )
     else:
         tiles = load_tiles(args.tileserver, args.index_file)
     if not tiles:

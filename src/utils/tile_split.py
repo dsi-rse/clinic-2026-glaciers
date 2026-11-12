@@ -34,6 +34,8 @@ METRES_PER_KM = 1000
 # macOS file flag set on files that Box keeps online-only (not downloaded to this computer)
 DATALESS_FLAG = 0x40000000
 DEFAULT_TILE_SIZE = 4096  # pixels, the same as the Label Studio tiles
+# Augmented frames are saved next to the originals as <original name>_<method>.h5
+AUGMENTATION_METHODS = ("high_pass", "black_tophat", "clahe", "unsharp_mask")
 START_DATE_PART = 11  # position of the start date in a NISAR file name split by "_"
 
 
@@ -267,6 +269,16 @@ def assign_blocks(
     return labels
 
 
+def is_augmented(frame: Path) -> bool:
+    """True if the file is an augmented copy of a frame, for example ..._001_black_tophat.h5.
+
+    The original NISAR names never contain a method name, so any file that does is an
+    augmented one (also with an extra part, like ..._black_tophat_r4.h5).
+    """
+    methods = "|".join(AUGMENTATION_METHODS)
+    return re.search(rf"_({methods})(_|$)", frame.stem) is not None
+
+
 def get_start_date(frame: Path) -> str:
     """Return the start date and time of a NISAR frame, for example "20260723T015731".
 
@@ -315,11 +327,23 @@ def load_tiles(
     Frames that Box keeps online-only are skipped unless include_online_only is True,
     because reading them means waiting for a large download.
     If date_prefix is given (for example "202607"), only the frames whose start date
-    begins with it are used.
+    begins with it are used. Augmented copies of the frames (..._black_tophat.h5) are never
+    used, so the split is the same with or without augmentation.
     """
     tileserver = load_tileserver(image_dir, cache_dir)
     # All frames
     frames = find_frames(image_dir)
+
+    # The split always uses the original frames, so it is the same for every augmentation
+    originals = [frame for frame in frames if not is_augmented(frame)]
+    if len(originals) < len(frames):
+        print(
+            f"Ignoring {len(frames) - len(originals)} augmented frames (split uses the originals)"
+        )
+    if not originals:
+        msg = f"Only augmented frames found in {image_dir}: the original frames are needed"
+        raise FileNotFoundError(msg)
+    frames = originals
 
     frames = filter_frames_by_date(frames, date_prefix, image_dir)
 

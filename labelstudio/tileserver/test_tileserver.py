@@ -1,6 +1,7 @@
 """Tests for the HDF5 -> PNG tile server, on small synthetic frames."""
 
 import io
+import json
 from pathlib import Path
 
 import h5py
@@ -48,6 +49,20 @@ def frame(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(tileserver, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(tileserver, "_stats_memo", {})
     return path
+
+
+@pytest.mark.parametrize("contents", ["", '{"key":', "null"])
+def test_invalid_cache_is_rebuilt(frame: Path, contents: str) -> None:
+    """An interrupted or invalid cache does not stop frame indexing."""
+    cache_file = tileserver.CACHE_DIR / f"{frame.stem}.json"
+    cache_file.parent.mkdir()
+    cache_file.write_text(contents)
+
+    index = tileserver.build_index(frame.parent)
+
+    assert len(index) == TILES_WITH_DATA
+    assert json.loads(cache_file.read_text()) == tileserver.get_stats(frame)
+    assert not list(cache_file.parent.glob("*.tmp"))
 
 
 def expected_valid(path: Path) -> tuple[np.ndarray, np.ndarray]:

@@ -25,6 +25,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -136,20 +137,33 @@ def get_stats(path: Path) -> dict:
             return _stats_memo[key]
         stats = None
         if cache_file.exists():
-            cached = json.loads(cache_file.read_text())
-            if cached.get("key") == key:
-                stats = cached
+            try:
+                cached = json.loads(cache_file.read_text())
+                if isinstance(cached, dict) and cached.get("key") == key:
+                    stats = cached
+            except (OSError, ValueError) as exc:
+                print(f"Ignoring unreadable cache {cache_file}: {exc}", file=sys.stderr)
         if stats is None:
             print(
                 f"Computing display range for {path.name} (one-time) ...",
                 file=sys.stderr,
             )
             stats = {"key": key, **compute_stats(path)}
+            temporary = None
             try:
                 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                cache_file.write_text(json.dumps(stats))
+                # Finish writing beside the destination before replacing the old cache.
+                with tempfile.NamedTemporaryFile(
+                    mode="w", dir=CACHE_DIR, suffix=".tmp", delete=False
+                ) as handle:
+                    temporary = Path(handle.name)
+                    json.dump(stats, handle)
+                temporary.replace(cache_file)
             except OSError as exc:
                 print(f"Could not cache stats in {CACHE_DIR}: {exc}", file=sys.stderr)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
         _stats_memo[key] = stats
         return stats
 

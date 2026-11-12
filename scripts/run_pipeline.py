@@ -288,10 +288,10 @@ def main() -> None:
         run_dir / f"tile_assignments_{args.tile_size}_seed{args.seed}{method}.json"
     )
     last = STEPS.index(args.until)
-
-    print(f"Pipeline folder: {run_dir}")
+    print("\n=== Pipeline")
+    print(f"a) Pipeline folder: {run_dir}\n")
     print(
-        f"Settings: dates {args.date_prefix or 'all'}, {args.tile_size} px tiles, "
+        f"b) Settings: dates {args.date_prefix or 'all'}, {args.tile_size} px tiles, "
         f"{args.block_km:g} km blocks, gap {args.gap_km:g} km, seed {args.seed}, "
         f"augmentation {args.augmentation}"
     )
@@ -330,6 +330,7 @@ def main() -> None:
             else str(assignments)
         )
         print(
+            "\n=== Final Step",
             "\nNext, by hand (labelstudio/ASSIGNMENTS.md): each person adds this to .env\n"
             "and runs make labelstudio:\n"
             "  LABELSTUDIO_ASSIGNEE=<your name>\n"

@@ -10,8 +10,10 @@ from utils import tile_split
 from utils.tile_split import (
     assign_blocks,
     check_no_leakage,
+    filter_frames_by_date,
     filter_region,
     find_frames,
+    get_start_date,
     locate_blocks,
     split_by_blocks,
 )
@@ -162,3 +164,53 @@ def test_split_starts_the_grid_at_the_corner_of_the_tiles() -> None:
     table = split_by_blocks(tiles, BLOCK_TILE_M, BLOCK_KM)
     assert table["block_x"].tolist() == [0, 1]
     assert table["block_y"].tolist() == [0, 0]
+
+
+def make_frames(day_by_name: dict[str, str]) -> list[Path]:
+    """Frame paths named like NISAR files, with the given start day (no files are made)."""
+    return [
+        Path(
+            f"NISAR_L2_PR_GCOV_026_{name}_A_142_4005_SHSH_A_{day}T015731_{day}T015807_P05023_N_F_J_001.h5"
+        )
+        for name, day in day_by_name.items()
+    ]
+
+
+def test_date_prefix_keeps_only_the_frames_of_that_month() -> None:
+    """A month prefix keeps July frames and drops August frames."""
+    frames = make_frames({"041": "20260723", "062": "20260724", "063": "20260816"})
+    kept = filter_frames_by_date(frames, "202607", Path("images"))
+    assert kept == frames[:2]
+
+
+def test_date_prefix_can_pick_one_day() -> None:
+    """A full day prefix keeps only the frames of that day."""
+    frames = make_frames({"041": "20260723", "062": "20260724"})
+    assert filter_frames_by_date(frames, "20260724", Path("images")) == frames[1:]
+
+
+def test_no_date_prefix_keeps_every_frame() -> None:
+    """An empty prefix is no filter, even for names that are not NISAR names."""
+    frames = [Path("not_a_nisar_name.h5")]
+    assert filter_frames_by_date(frames, "", Path("images")) == frames
+
+
+def test_date_prefix_without_a_match_says_so() -> None:
+    """A prefix that matches no frame raises an error that names the prefix."""
+    frames = make_frames({"041": "20260723"})
+    with pytest.raises(FileNotFoundError, match="202609"):
+        filter_frames_by_date(frames, "202609", Path("images"))
+
+
+@pytest.mark.parametrize(
+    "name", ["short_name.h5", "a_b_c_d_e_f_g_h_i_j_k_notadate_x.h5"]
+)
+def test_unexpected_file_name_gives_a_clear_message(name: str) -> None:
+    """A name without a start date gives a ValueError with the file name, not an IndexError."""
+    with pytest.raises(ValueError, match=name):
+        filter_frames_by_date([Path(name)], "202607", Path("images"))
+
+
+def test_start_date_is_read_from_the_name() -> None:
+    """The start date and time is the 12th part of the name."""
+    assert get_start_date(make_frames({"041": "20260723"})[0]) == "20260723T015731"

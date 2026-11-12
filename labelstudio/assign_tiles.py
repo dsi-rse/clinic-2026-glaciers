@@ -15,9 +15,16 @@ re-runs `make labelstudio`; only their tiles are loaded.
 - Each person works through the tiers in order, shuffled within a tier.
 
 The tile list comes from the tile server (`make labelstudio` starts it), the same
-/index endpoint the setup script uses.
+/index endpoint the setup script uses. With --split-csv it comes from a train/test split
+CSV instead (the output of split_tiles.py): the `gap` tiles are left out and --tile-size
+gives the tile size of that split, and --image-dir the folder with the frames, so the frame
+paths are the ones Label Studio uses (also when the frames are in subfolders).
 
 Examples:
+    python3 assign_tiles.py --split-csv splits/tile_split_region_2048px_blocks_163.84km.csv \
+        --tile-size 2048 --image-dir "$DATA_DIR/nisar_data/nisar_gcov_amery" \
+        --people Jeanne Bailey Sophie Alexandra --seed 42 \
+        --tiers 50 150 405
     python3 assign_tiles.py --people Jeanne Bailey Sophie Alexandra --seed 42 \
         --tiers 10% 30% 100%
     python3 assign_tiles.py --people A B C D --seed 42 --tiers 40 120 400 \
@@ -56,6 +63,15 @@ def tile_key(tile: Tile) -> str:
     return f"{tile['file']}|{tile['tile_size']}|{tile['row']}|{tile['col']}"
 
 
+def labelstudio_title(tile: Tile) -> str:
+    """Return the task title Label Studio shows for a tile (same text as setup.sh).
+
+    Paste it in the Data Manager filter (Title contains ...) to find the tile.
+    """
+    granule = tile["file"].rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return f"{granule}  ({tile['tile_size']} px tile, row {tile['row']}, col {tile['col']})"
+
+
 def load_tiles(tileserver: str, index_file: str | None) -> list[Tile]:
     """Load the tile list from a saved index file or from the tile server, sorted."""
     if index_file:
@@ -69,6 +85,58 @@ def load_tiles(tileserver: str, index_file: str | None) -> list[Tile]:
             sys.exit(
                 f"Could not reach the tile server at {url}: {exc}\n"
                 "Start it with `make labelstudio`, or pass --tileserver / --index-file."
+            )
+    # Sorted, so the same data and seed always give the same assignment
+    return sorted(tiles, key=lambda t: (t["file"], t["row"], t["col"]))
+
+
+def find_frame_paths(image_dir: str) -> dict[str, str]:
+    """Map each frame file name to its path below image_dir, as the tile server writes it.
+
+    The tile server (and so setup.sh) names a frame by its path below the image folder, with
+    "/" (for example "july/NISAR_...h5"). The split CSV only has the file name, so the
+    folder part is added here. Subfolders are searched, like the tile server does.
+    """
+    root = Path(image_dir)
+    if not root.is_dir():
+        sys.exit(f"--image-dir {image_dir} is not a folder.")
+    found: dict[str, list[str]] = defaultdict(list)
+    for path in sorted(root.rglob("*")):
+        if path.suffix.lower() in (".h5", ".hdf5"):
+            found[path.name].append(path.relative_to(root).as_posix())
+    twice = {name: paths for name, paths in found.items() if len(paths) > 1}
+    if twice:
+        name, paths = next(iter(twice.items()))
+        sys.exit(f"{name} is in several folders ({', '.join(paths)}): keep one copy.")
+    return {name: paths[0] for name, paths in found.items()}
+
+
+def load_tiles_from_split(
+    csv_path: str, tile_size: int, frame_paths: dict[str, str]
+) -> list[Tile]:
+    """Load the tiles to label from a split CSV written by split_tiles.py.
+
+    Only the train and test tiles are kept: the `gap` tiles were dropped by the split.
+    The CSV has no tile size column, so it is given with --tile-size. Each frame name is
+    changed to its path below the image folder (frame_paths, from find_frame_paths), so the
+    tiles match the ones Label Studio loads.
+    """
+    tiles = []
+    with Path(csv_path).open(newline="") as f:
+        for row in csv.DictReader(f):
+            if row["split"] == "gap":
+                continue
+            if row["frame"] not in frame_paths:
+                sys.exit(
+                    f"The split CSV has the frame {row['frame']}, not found in --image-dir."
+                )
+            tiles.append(
+                {
+                    "file": frame_paths[row["frame"]],
+                    "tile_size": tile_size,
+                    "row": int(row["row"]),
+                    "col": int(row["col"]),
+                }
             )
     # Sorted, so the same data and seed always give the same assignment
     return sorted(tiles, key=lambda t: (t["file"], t["row"], t["col"]))
@@ -211,6 +279,7 @@ def build_spec(
                     "col": t["col"],
                     "tier": names[tier],
                     "order": i,
+                    "labelstudio_title": labelstudio_title(t),
                 }
                 for i, (t, tier) in enumerate(items, 1)
             ]
@@ -235,12 +304,60 @@ def write_master_csv(out: Assignments, names: list[str], csv_path: Path) -> None
     with csv_path.open("w", newline="") as f:
         w = csv.writer(f)
         w.writerow(
-            ["source_file", "tile_row", "tile_col", "tier", "reviewer_1", "reviewer_2"]
+            [
+                "source_file",
+                "tile_row",
+                "tile_col",
+                "tier",
+                "reviewer_1",
+                "reviewer_2",
+                "labelstudio_title",
+            ]
         )
         for tile, tier, who in rows:
             w.writerow(
-                [tile["file"], tile["row"], tile["col"], names[tier], *sorted(who)]
+                [
+                    tile["file"],
+                    tile["row"],
+                    tile["col"],
+                    names[tier],
+                    *sorted(who),
+                    labelstudio_title(tile),
+                ]
             )
+
+
+def write_person_csv(out: Assignments, names: list[str], csv_path: Path) -> None:
+    """Write one row per person and tile, in the order that person labels them.
+
+    This has what the master CSV cannot hold: the order is different for every person.
+    """
+    with csv_path.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(
+            [
+                "person",
+                "order",
+                "tier",
+                "source_file",
+                "tile_row",
+                "tile_col",
+                "labelstudio_title",
+            ]
+        )
+        for person, items in out.items():
+            for order, (tile, tier) in enumerate(items, 1):
+                w.writerow(
+                    [
+                        person,
+                        order,
+                        names[tier],
+                        tile["file"],
+                        tile["row"],
+                        tile["col"],
+                        labelstudio_title(tile),
+                    ]
+                )
 
 
 def print_summary(
@@ -296,6 +413,25 @@ def parse_args() -> argparse.Namespace:
         help="Read the tile list from a saved copy of the tile server's /index instead",
     )
     ap.add_argument(
+        "--split-csv",
+        default=None,
+        help="Read the tiles from a split CSV (output of split_tiles.py) instead of the "
+        "tile server. The gap tiles are left out. Needs --tile-size.",
+    )
+    ap.add_argument(
+        "--tile-size",
+        type=int,
+        default=None,
+        help="Tile size in pixels of the split CSV, e.g. 2048 (only with --split-csv)",
+    )
+    ap.add_argument(
+        "--image-dir",
+        default=None,
+        help="Folder with the .h5 frames: the same folder the tile server reads, i.e. "
+        "DATA_DIR/LABELSTUDIO_IMAGE_SUBDIR (only with --split-csv). It gives the frame "
+        "paths that Label Studio uses, also when the frames are in subfolders.",
+    )
+    ap.add_argument(
         "--no-stratify",
         action="store_true",
         help="Plain random shuffle instead of spreading tiers across frames",
@@ -310,7 +446,18 @@ def main() -> None:
 
     if len(set(args.people)) != len(args.people):
         sys.exit("Names in --people must be unique.")
-    tiles = load_tiles(args.tileserver, args.index_file)
+    if args.split_csv:
+        if not args.tile_size:
+            sys.exit("--split-csv needs --tile-size (for example --tile-size 2048).")
+        if not args.image_dir:
+            sys.exit(
+                "--split-csv needs --image-dir: the folder with the .h5 frames "
+                "(DATA_DIR/LABELSTUDIO_IMAGE_SUBDIR)."
+            )
+        frame_paths = find_frame_paths(args.image_dir)
+        tiles = load_tiles_from_split(args.split_csv, args.tile_size, frame_paths)
+    else:
+        tiles = load_tiles(args.tileserver, args.index_file)
     if not tiles:
         sys.exit("The tile list is empty; no tiles with data were found.")
     tile_sizes = {t["tile_size"] for t in tiles}
@@ -337,6 +484,8 @@ def main() -> None:
     Path(args.out).write_text(json.dumps(spec, indent=2))
     csv_path = Path(args.out).with_suffix(".csv")
     write_master_csv(out, names, csv_path)
+    person_csv_path = csv_path.with_name(f"{csv_path.stem}_by_person.csv")
+    write_person_csv(out, names, person_csv_path)
 
     frames = {t["file"] for t in tiles}
     print(
@@ -344,7 +493,7 @@ def main() -> None:
         f"{args.copies} reviewers each; seed {seed}"
     )
     print_summary(order, out, names, sizes)
-    print(f"Wrote {args.out} and {csv_path}")
+    print(f"Wrote {args.out}, {csv_path} and {person_csv_path}")
 
 
 if __name__ == "__main__":

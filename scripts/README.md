@@ -353,3 +353,19 @@ Output: one PNG per stack id, `stack_<stack id>_<tile size>px.png`.
 - The zoom goes to the most textured spot, which can be sea ice or icebergs at the ice front.
   They move with the ocean and the wind, so their movement is not the speed of the glacier.
 - The picture only shows the movement. It does not measure it.
+
+## Assigning the split tiles to labelers
+
+The tiles to label come from a split CSV (`split_tiles.py`) and are given to people with
+`labelstudio/assign_tiles.py` (Jeanne's script, PR #26). Steps for the team, in order:
+
+1. **Split** (once): `split_tiles.py --date-prefix 202607 --tile-size 2048 --block-km 163.84 ...` (see above).
+2. **Assign** (once, one person): `python3 labelstudio/assign_tiles.py --split-csv <split csv> --tile-size 2048
+   --image-dir <frames folder> --people ... --seed ... --tiers ... --out <path>.json`. Gap tiles are left out.
+   `--image-dir` is the folder the tile server reads, so file paths match Label Studio, also in subfolders.
+   It writes the JSON, a CSV with the two reviewers per tile, and `*_by_person.csv` with each person's order.
+3. **Share the JSON.** Each person sets `LABELSTUDIO_ASSIGNEE`, `LABELSTUDIO_ASSIGNMENTS` (the **JSON**, not the
+   CSV), `LABELSTUDIO_MAX_TIER` and `TILESERVER_TILE_SIZE=2048` in `.env`, then runs `make labelstudio`.
+4. **Label** with "Label All Tasks": tiles come in the assigned order, and titles end with `[small #n]`.
+
+Full instructions for labelers: `labelstudio/ASSIGNMENTS.md`.

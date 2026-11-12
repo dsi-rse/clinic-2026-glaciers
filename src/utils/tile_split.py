@@ -18,6 +18,7 @@ different frames can be compared directly.
 
 import importlib.util
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -33,6 +34,7 @@ METRES_PER_KM = 1000
 # macOS file flag set on files that Box keeps online-only (not downloaded to this computer)
 DATALESS_FLAG = 0x40000000
 DEFAULT_TILE_SIZE = 4096  # pixels, the same as the Label Studio tiles
+START_DATE_PART = 11  # position of the start date in a NISAR file name split by "_"
 
 
 def load_tileserver(image_dir: Path, cache_dir: Path) -> object:
@@ -265,6 +267,41 @@ def assign_blocks(
     return labels
 
 
+def get_start_date(frame: Path) -> str:
+    """Return the start date and time of a NISAR frame, for example "20260723T015731".
+
+    The start time is the 12th part of the name: ..._A_20260723T015731_20260723T015807_...
+    Raises a ValueError that names the file if the name does not look like that.
+    """
+    parts = frame.name.split("_")
+    if len(parts) > START_DATE_PART and re.fullmatch(
+        r"\d{8}T\d{6}", parts[START_DATE_PART]
+    ):
+        return parts[START_DATE_PART]
+    msg = (
+        f"Cannot read the start date of {frame.name}: expected a NISAR file name like "
+        "NISAR_L2_PR_GCOV_026_041_A_142_4005_SHSH_A_20260723T015731_..., so the file "
+        "cannot be used with --date-prefix. Move or rename it, or run without --date-prefix."
+    )
+    raise ValueError(msg)
+
+
+def filter_frames_by_date(
+    frames: list[Path], date_prefix: str, image_dir: Path
+) -> list[Path]:
+    """Keep the frames whose start date begins with date_prefix (all frames if it is empty).
+
+    For example "202607" keeps the frames that start in July 2026.
+    """
+    if not date_prefix:
+        return frames
+    kept = [frame for frame in frames if get_start_date(frame).startswith(date_prefix)]
+    if not kept:
+        msg = f"No frames start with the date {date_prefix} in {image_dir}"
+        raise FileNotFoundError(msg)
+    return kept
+
+
 def load_tiles(
     image_dir: Path,
     cache_dir: Path,
@@ -284,16 +321,7 @@ def load_tiles(
     # All frames
     frames = find_frames(image_dir)
 
-    if date_prefix:
-        # The start date is the 12th part of the name: ..._A_20260723T015731_...
-        frames = [
-            frame
-            for frame in frames
-            if frame.name.split("_")[11].startswith(date_prefix)
-        ]
-        if not frames:
-            msg = f"No frames start with the date {date_prefix} in {image_dir}"
-            raise FileNotFoundError(msg)
+    frames = filter_frames_by_date(frames, date_prefix, image_dir)
 
     if not include_online_only:
         online_only = [frame for frame in frames if is_online_only(frame)]

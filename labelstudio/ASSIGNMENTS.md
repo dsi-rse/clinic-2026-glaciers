@@ -40,7 +40,8 @@ LABELSTUDIO_MAX_TIER=small
 - **`LABELSTUDIO_MAX_TIER`** stays `small` until the team tells you to move on
   (see step 5).
 
-Don't change `TILESERVER_TILE_SIZE`. Everyone must use the same value.
+Don't change `TILESERVER_TILE_SIZE`. Everyone must use the same value. It must be the tile
+size the assignment was made for: **2048** for the Amery July assignment (see the last section).
 
 Save with `Ctrl+O`, `Enter`, then exit with `Ctrl+X`.
 
@@ -128,3 +129,35 @@ alone.
 
 **Anything else.**
 Copy the full output of `make labelstudio` and send it to the coordinator.
+
+## Amery July assignment: how it was made (coordinator)
+
+The Amery assignment uses the tiles of the train/test split (`scripts/split_tiles.py`), not every
+tile the tile server offers: tiles dropped at block edges (`gap`) are left out. Make it once:
+
+```
+python3 labelstudio/assign_tiles.py \
+  --split-csv "$DATA_DIR/splits/amery_block_size_comparison/tile_split_region_2048px_blocks_163.84km.csv" \
+  --tile-size 2048 \
+  --image-dir "$DATA_DIR/nisar_data/nisar_gcov_amery" \
+  --people Jeanne Bailey Sophie Alexandra --seed 42 --tiers 50 150 405 \
+  --out "$DATA_DIR/tile_assignments_2048.json"
+```
+
+- `--image-dir` must be the same folder the tile server reads (`DATA_DIR` + `LABELSTUDIO_IMAGE_SUBDIR`).
+  The split CSV only has file names; this option adds the folder part (for example `july/NISAR_...h5`) so the
+  tiles match the ones Label Studio loads, also when the frames are in subfolders.
+- It writes three files next to each other:
+
+| File | Use it for |
+| --- | --- |
+| `tile_assignments_2048.json` | **The file everyone loads** (`LABELSTUDIO_ASSIGNMENTS`). It has each person's tiles and their `order`. |
+| `tile_assignments_2048.csv` | Reference: one row per tile, with its tier and the two reviewers. No per-person order. |
+| `tile_assignments_2048_by_person.csv` | Reference: one row per person and tile, in that person's order. |
+
+- The order only comes from the JSON through `make labelstudio`. Do not label from the CSVs.
+- `labelstudio_title` (in the JSON and the CSVs) is the task title without the `[small #n]` tag. Paste it in the
+  Data Manager filter (Title contains ...) to find a tile.
+- The tile server also offers the August frames and the tiles outside the bounding box, so
+  `make labelstudio` prints `WARNING: N tile(s) in your data are not in the assignment file`. For Amery this is
+  expected: those tiles are not assigned and are not loaded.

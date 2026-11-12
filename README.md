@@ -10,6 +10,12 @@
 
 ## Usage
 
+### Full-frame NISAR enhancement
+
+Use `uv run python scripts/enhance.py INPUT.h5 OUTPUT.h5` to enhance a GCOV
+frequency A HHHH frame. See [the enhancement instructions](scripts/README.md#full-frame-enhancement-enhancepy)
+for setup, filter options, required input datasets, and output limitations.
+
 ### Docker
 
 ### Docker & Make

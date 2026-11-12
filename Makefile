@@ -19,7 +19,7 @@ endif
 
 
 # Build Docker image
-.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast enhance-contrast-local split-tiles split-tiles-local split-tiles-custom split-tiles-custom-local split-tiles-pine-island split-tiles-pine-island-local plot-split-steps plot-split-steps-local plot-ice-movement plot-ice-movement-local
+.PHONY: build-only run-interactive run-notebook labelstudio labelstudio-export labelstudio-stop enhance-contrast enhance-contrast-local split-tiles split-tiles-local split-tiles-custom split-tiles-custom-local split-tiles-pine-island split-tiles-pine-island-local plot-split-steps plot-split-steps-local plot-ice-movement plot-ice-movement-local pipeline pipeline-local
 
 # Build Docker image 
 build-only: 
@@ -108,3 +108,13 @@ plot-ice-movement: build-only
 # Same with uv, for a local environment (no Docker).
 plot-ice-movement-local:
 	uv run python scripts/plot_ice_movement.py $(ARGS)
+
+# Prepare the tiles for labeling, step by step: box, split, tiles to label and assignment.
+# See scripts/README.md. Label Studio is not part of it: each person loads their own tiles by
+# hand when it finishes (labelstudio/ASSIGNMENTS.md).
+#   make pipeline ARGS="--region 1700 620 2200 800 --block-km 122.88"
+pipeline: build-only
+	docker compose run --rm $(project_name) python scripts/run_pipeline.py $(ARGS)
+
+pipeline-local:
+	uv run python scripts/run_pipeline.py $(ARGS)

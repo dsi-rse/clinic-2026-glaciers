@@ -5,6 +5,7 @@
 | [`enhance_contrast.py`](#enhance_contrastpy) | Makes CLAHE and high-pass versions of NISAR tiles | `make enhance-contrast` |
 | [`split_tiles.py`](#split_tilespy) | Splits tiles into train and test with a checkerboard | `make split-tiles` |
 | [`plot_split_steps.py`](#plot_split_stepspy) | Draws the split in four pictures: study area, blocks, sample tiles, tiles after the split | `make plot-split-steps ARGS="--tile-size 1024 --block-km 40.96"` |
+| [`run_pipeline.py`](#run_pipelinepy) | Prepares the tiles for labeling in order: box, split, tiles to label, assignment | `make pipeline` |
 | [`plot_ice_movement.py`](#plot_ice_movementpy) | Plots all the dates of one stack to see how the ice moves | `make plot-ice-movement ARGS="--stack-id 077_A_140"` |
 
 ## Setup
@@ -369,3 +370,76 @@ The tiles to label come from a split CSV (`split_tiles.py`) and are given to peo
 4. **Label** with "Label All Tasks": tiles come in the assigned order, and titles end with `[small #n]`.
 
 Full instructions for labelers: `labelstudio/ASSIGNMENTS.md`.
+
+## `run_pipeline.py`
+
+### What it does
+
+Prepares the tiles for labeling in one command, in this order. Each step uses a script that
+already exists, so nothing is done twice and no logic is copied.
+
+| Step | What happens | Script |
+| --- | --- | --- |
+| 1. `box` | The bounding box (the area of analysis) is checked and saved. | |
+| 2. `split` | Train and test split of the tiles inside the box, for the chosen dates. | `split_tiles.py` |
+| 3. `tiles` | The tiles to label: the train and test tiles of the split CSV (the dropped `gap` tiles are left out). | |
+| 4. `assign` | Each tile goes to 2 people, with batches and a random order. Makes the JSON, a CSV and a CSV by person. | `labelstudio/assign_tiles.py` |
+
+**Label Studio is not a step.** Each person loads their own tiles by hand (see below), because it
+needs Docker, a personal name and changes their own project.
+
+Everything one run makes goes in one folder of the repo, `data/pipeline/<run name>`, with a
+`pipeline_settings.json` that says how it was made. The folder is the same with Docker and with `uv` (in
+Docker the repo is `/project`), and git ignores it, so the files are not committed. The frames are still read
+from `DATA_DIR`.
+
+The run name is `run_` and a short code made from the settings (dates, box, tile size, block size, gap, swap,
+people, seed, batches), for example `run_a3f9c2`. The same settings give the same folder, and other settings
+give another one, so runs never overwrite each other. To choose the name yourself, use `--name amery_july`.
+If a folder already holds a run with other settings, the pipeline stops and says which settings differ.
+
+### How to run it
+
+```bash
+# All the steps with the defaults (July 2026, 2048 px tiles, 163.84 km blocks, seed 42)
+make pipeline-local
+
+# Only see how many tiles a box leaves (steps 1 to 3)
+make pipeline-local ARGS="--region 1700 620 2200 800 --until tiles"
+
+# Your own box and block size
+make pipeline-local ARGS="--region 1700 620 2200 800 --block-km 122.88"
+```
+
+`make pipeline` is the same with Docker. When it finishes it prints the lines each person adds to `.env`.
+
+### After the pipeline: load your tiles (by hand)
+
+Add these lines to your `.env` (the pipeline prints them with your real file path), then run `make labelstudio`:
+
+```
+LABELSTUDIO_ASSIGNEE=<your name>
+LABELSTUDIO_ASSIGNMENTS=<full path on your computer to the tile_assignments_..._seed42.json of the run>
+LABELSTUDIO_MAX_TIER=small
+TILESERVER_TILE_SIZE=2048
+```
+
+Use the **JSON**, not the CSVs: only the JSON has your order. Details: `labelstudio/ASSIGNMENTS.md`.
+
+### Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `--until` | `assign` | Last step to run: `box`, `split`, `tiles` or `assign`. It always starts at step 1. |
+| `--region` | the Amery box | Bounding box `X_MIN Y_MIN X_MAX Y_MAX` in **km** (EPSG:3031). The team is choosing a tighter box: pass it here when it is ready. |
+| `--date-prefix` | `202607` | Only frames whose start date begins with this (July 2026). Empty uses all frames. |
+| `--tile-size` | 2048 | Tile size in pixels. |
+| `--block-km` | 163.84 | Block size in km. |
+| `--gap-km`, `--swap` | 0, off | As in `split_tiles.py`. |
+| `--image-dir` | `DATA_DIR/$LABELSTUDIO_IMAGE_SUBDIR` | Folder with the `.h5` frames. |
+| `--people` | Jeanne Bailey Sophie Alexandra | Names, spelled as in `LABELSTUDIO_ASSIGNEE`. |
+| `--seed` | 42 | The same seed gives the same assignment. Do not change it after people start labeling. |
+| `--tiers` | `10% 30% 100%` | Sizes of the small, medium and large batches. They are percentages, so they follow the number of tiles in the box. Counts (`50 150 405`) also work. |
+| `--augmentation` | `none` | CLAHE or high-pass before labeling. **Not connected yet**: the team has not decided, so only `none` works. |
+| `--name` | `run_<code>` | Name of the folder in `data/pipeline`. |
+| `--run-dir` | `data/pipeline/<run name>` | Full folder of this run, instead of `--name` (to write somewhere else). |

@@ -331,8 +331,8 @@ def main() -> None:
         )
         print(
             "\n=== Final Step",
-            "\nNext, by hand (labelstudio/ASSIGNMENTS.md): each person adds this to .env\n"
-            "and runs make labelstudio:\n"
+            "\nPlease adds this to your .env\n"
+            "and run make labelstudio:\n"
             "  LABELSTUDIO_ASSIGNEE=<your name>\n"
             f"  LABELSTUDIO_ASSIGNMENTS={shown}\n"
             "  LABELSTUDIO_MAX_TIER=small\n"
@@ -345,7 +345,8 @@ def main() -> None:
                 + ".h5) in the same folder as the originals."
                 if args.augmentation != "none"
                 else ""
-            )
+            ),
+            "\n===End",
         )
 
 

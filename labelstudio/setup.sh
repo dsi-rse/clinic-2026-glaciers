@@ -164,6 +164,11 @@ def load_assignment(assignee, path, max_tier, tiles):
         sys.exit(f"{assignee!r} is not in {path}. Names there: {', '.join(spec['assignments'])}")
 
     names = [t["name"] for t in spec["tiers"]]
+    if len(set(names)) != len(names):
+        sys.exit(
+            f"{path} has repeated tier names ({', '.join(names)}), so a tier limit would "
+            "also load later tiers. Make a new assignment file with unique --tier-names."
+        )
     if max_tier:
         if max_tier not in names:
             sys.exit(f"LABELSTUDIO_MAX_TIER is {max_tier!r}; the tiers in {path} are: {', '.join(names)}")

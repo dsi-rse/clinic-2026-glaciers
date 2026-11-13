@@ -83,6 +83,15 @@ def default_tier_names(n_tiers: int) -> list[str]:
     return [f"tier{i}" for i in range(1, n_tiers + 1)]
 
 
+def validate_tier_names(names: list[str], n_tiers: int) -> None:
+    """Exit with a message if tier names are the wrong number or not unique."""
+    if len(names) != n_tiers:
+        sys.exit("--tier-names must have the same number of entries as --tiers.")
+    repeated = sorted({n for n in names if names.count(n) > 1})
+    if repeated:
+        sys.exit(f"--tier-names must be unique; repeated: {', '.join(repeated)}.")
+
+
 def parse_tiers(specs: list[str], total: int) -> list[int]:
     """Turn counts or percentages like ["10%", "40"] into cumulative tile counts."""
     sizes = []
@@ -219,8 +228,10 @@ def build_spec(
     }
 
 
-def write_master_csv(out: Assignments, names: list[str], csv_path: Path) -> None:
-    """Write one row per tile with its tier and both reviewers.
+def write_master_csv(
+    out: Assignments, names: list[str], csv_path: Path, copies: int
+) -> None:
+    """Write one row per tile with its tier and all of its reviewers.
 
     The tier is the one a tile FIRST appears in. Tiers are cumulative, so the medium
     training set is the small + medium rows, and large is every row.
@@ -234,9 +245,8 @@ def write_master_csv(out: Assignments, names: list[str], csv_path: Path) -> None
     )
     with csv_path.open("w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(
-            ["source_file", "tile_row", "tile_col", "tier", "reviewer_1", "reviewer_2"]
-        )
+        reviewers = [f"reviewer_{i}" for i in range(1, copies + 1)]
+        w.writerow(["source_file", "tile_row", "tile_col", "tier", *reviewers])
         for tile, tier, who in rows:
             w.writerow(
                 [tile["file"], tile["row"], tile["col"], names[tier], *sorted(who)]
@@ -321,8 +331,7 @@ def main() -> None:
 
     sizes = parse_tiers(args.tiers or [str(len(tiles))], len(tiles))
     names = args.tier_names or default_tier_names(len(sizes))
-    if len(names) != len(sizes):
-        sys.exit("--tier-names must have the same number of entries as --tiers.")
+    validate_tier_names(names, len(sizes))
 
     seed = (
         args.seed if args.seed is not None else random.SystemRandom().randrange(2**31)
@@ -336,7 +345,7 @@ def main() -> None:
     spec = build_spec(out, tiers, seed, next(iter(tile_sizes)), args)
     Path(args.out).write_text(json.dumps(spec, indent=2))
     csv_path = Path(args.out).with_suffix(".csv")
-    write_master_csv(out, names, csv_path)
+    write_master_csv(out, names, csv_path, args.copies)
 
     frames = {t["file"] for t in tiles}
     print(

@@ -37,6 +37,9 @@ from PIL import Image
 IMAGE_DIR = Path(os.environ.get("IMAGE_DIR", "/data"))
 CACHE_DIR = Path(os.environ.get("CACHE_DIR", "/cache"))
 PORT = int(os.environ.get("PORT", "8081"))
+# Optional bounding box "xmin,ymin,xmax,ymax" in BBOX_CRS. Empty means no restriction.
+BBOX = os.environ.get("BBOX", "")
+BBOX_CRS = os.environ.get("BBOX_CRS", "EPSG:3031")
 # Valid pixels are counted per BLOCK x BLOCK block, which can be summed into tiles of any size
 # that is a multiple of BLOCK. 512 matches the files' HDF5 chunks, so a tile never decompresses
 # a chunk it only partly uses.
@@ -59,10 +62,34 @@ NUM_BINS = round((DB_MAX - DB_MIN) / DB_BIN)
 # Rows read at a time in the stats pass: one chunk row. ~75 MB for a 30000-wide frame.
 STRIP_ROWS = 512
 # Bump when the stats format or meaning changes, to invalidate old cache files.
-STATS_VERSION = 2
+STATS_VERSION = 3
 
 _stats_lock = threading.Lock()
 _stats_memo: dict[str, dict] = {}
+
+
+def read_epsg(grid: h5py.Group) -> int:
+    """EPSG code of a grid's projection."""
+    proj = grid["projection"]
+    for key in ("epsg_code", "epsg"):
+        if key in proj.attrs:
+            return int(float(np.asarray(proj.attrs[key]).reshape(-1)[0]))
+    return int(np.asarray(proj[()]).reshape(-1)[0])
+
+
+def read_georef(grid: h5py.Group) -> dict:
+    """Grid origin, pixel spacing and EPSG code, or {} if the file has no coordinates."""
+    if not all(name in grid for name in ("xCoordinates", "yCoordinates", "projection")):
+        return {}
+    xs = np.asarray(grid["xCoordinates"][:2], dtype=np.float64)
+    ys = np.asarray(grid["yCoordinates"][:2], dtype=np.float64)
+    return {
+        "x_first": float(xs[0]),
+        "y_first": float(ys[0]),
+        "dx": float(xs[1] - xs[0]),
+        "dy": float(ys[1] - ys[0]),
+        "epsg": read_epsg(grid),
+    }
 
 
 def valid_mask(values: np.ndarray, exception: np.ndarray | None) -> np.ndarray:
@@ -94,6 +121,7 @@ def compute_stats(path: Path) -> dict:
     with h5py.File(path, "r") as handle:
         grid = handle[GRID]
         height, width = grid[LAYER].shape
+        georef = read_georef(grid)
         col_starts = np.arange(0, width, block)
         counts = np.zeros(NUM_BINS, dtype=np.int64)
         block_valid = np.zeros((-(-height // block), len(col_starts)), dtype=np.int64)
@@ -122,6 +150,7 @@ def compute_stats(path: Path) -> dict:
         "low_db": low,
         "high_db": high,
         "block_valid": block_valid.tolist(),
+        **georef,
     }
 
 
@@ -171,22 +200,55 @@ def tile_bounds(
     return x0, y0, min(size, stats["width"] - x0), min(size, stats["height"] - y0)
 
 
+def box_window(stats: dict) -> tuple[float, float, float, float] | None:
+    """The BBOX as (col0, row0, col1, row1) in this frame's pixels, or None if no BBOX."""
+    if not BBOX:
+        return None
+    if "x_first" not in stats:
+        raise KeyError("frame has no coordinates, so BBOX cannot be applied")
+    xmin, ymin, xmax, ymax = (float(v) for v in BBOX.split(","))
+    left = stats["x_first"] - stats["dx"] / 2  # coordinates are pixel centres
+    top = stats["y_first"] - stats["dy"] / 2
+    step_y = abs(stats["dy"])
+    return (
+        (xmin - left) / stats["dx"],
+        (top - ymax) / step_y,
+        (xmax - left) / stats["dx"],
+        (top - ymin) / step_y,
+    )
+
+
 def list_tiles(
     stats: dict, size: int | None = None, min_valid_fraction: float | None = None
 ) -> list[dict]:
-    """Tiles with enough data to be worth labeling."""
+    """Tiles with enough data to be worth labeling, and inside BBOX if one is set."""
     size = size or TILE_SIZE
     if min_valid_fraction is None:
         min_valid_fraction = MIN_VALID_FRACTION
     check_tile_size(stats, size)
+    window = box_window(stats)
+    if window is not None and stats["epsg"] != int(BBOX_CRS.split(":")[1]):
+        print(
+            f"Frame CRS EPSG:{stats['epsg']} differs from BBOX_CRS {BBOX_CRS}; "
+            "offering no tiles.",
+            file=sys.stderr,
+        )
+        return []
     per_tile = size // stats["block"]
     block_valid = np.array(stats["block_valid"], dtype=np.int64)
     tiles = []
     for row in range(-(-stats["height"] // size)):
         for col in range(-(-stats["width"] // size)):
+            x0, y0, width, height = tile_bounds(stats, size, row, col)
+            if window is not None and not (
+                x0 < window[2]
+                and x0 + width > window[0]
+                and y0 < window[3]
+                and y0 + height > window[1]
+            ):
+                continue
             rows = slice(row * per_tile, (row + 1) * per_tile)
             count = int(block_valid[rows, col * per_tile : (col + 1) * per_tile].sum())
-            x0, y0, width, height = tile_bounds(stats, size, row, col)
             if count > 0 and count >= min_valid_fraction * width * height:
                 tiles.append(
                     {

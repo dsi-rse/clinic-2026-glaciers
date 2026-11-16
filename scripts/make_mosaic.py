@@ -46,6 +46,7 @@ from rasterio.warp import calculate_default_transform, reproject, transform_boun
 from rasterio.windows import Window
 
 GRID_GROUP = "science/LSAR/GCOV/grids/{frequency}"
+EXCEPTION_MASK = "inputDataExceptionMask"
 BLOCK_PIXELS = 16_000_000  # input pixels read at once (about 64 MB as float32)
 MIN_VALID_FRACTION = (
     0.5  # an output pixel needs at least this share of valid input pixels
@@ -117,10 +118,19 @@ def read_crs(grid: h5py.Group) -> CRS:
     return CRS.from_epsg(int(np.asarray(proj[()]).reshape(-1)[0]))
 
 
-def block_mean(block: np.ndarray, factor: int, *, linear: bool) -> np.ndarray:
+def block_mean(
+    block: np.ndarray,
+    factor: int,
+    *,
+    linear: bool,
+    exception: np.ndarray | None = None,
+) -> np.ndarray:
     """Average factor x factor pixel groups, skipping no-data; dB unless linear."""
     rows, cols = block.shape
-    valid = np.isfinite(block) & (block > 0)
+    with np.errstate(invalid="ignore"):
+        valid = np.isfinite(block) & (block > 0)
+    if exception is not None:
+        valid &= exception == 0
     cleaned = np.where(valid, block, 0.0).astype(np.float32)
     shape = (rows // factor, factor, cols // factor, factor)
     sums = cleaned.reshape(shape).sum(axis=(1, 3), dtype=np.float64)
@@ -134,16 +144,20 @@ def block_mean(block: np.ndarray, factor: int, *, linear: bool) -> np.ndarray:
 
 
 def _write_blocks(
-    dset: h5py.Dataset, dst: DatasetWriter, factor: int, *, linear: bool
+    grid: h5py.Group, layer: str, dst: DatasetWriter, factor: int, *, linear: bool
 ) -> None:
     """Read the frame in row blocks, average each block, and write it to the GeoTIFF."""
+    dset = grid[layer]
+    mask = grid[EXCEPTION_MASK] if EXCEPTION_MASK in grid else None
     n_cols = dst.width * factor
     out_rows_per_block = max(1, BLOCK_PIXELS // (n_cols * factor))
     for out_row in range(0, dst.height, out_rows_per_block):
         n_out = min(out_rows_per_block, dst.height - out_row)
         r0 = out_row * factor
-        block = np.asarray(dset[r0 : r0 + n_out * factor, :n_cols], dtype=np.float32)
-        result = block_mean(block, factor, linear=linear)
+        rows = slice(r0, r0 + n_out * factor)
+        block = np.asarray(dset[rows, :n_cols], dtype=np.float32)
+        exception = np.asarray(mask[rows, :n_cols]) if mask is not None else None
+        result = block_mean(block, factor, linear=linear, exception=exception)
         dst.write(result, 1, window=Window(0, out_row, dst.width, n_out))
 
 
@@ -184,7 +198,9 @@ def decimate_frame(path: Path, out_path: Path, settings: Settings) -> FrameResul
             "blockysize": 256,
         }
         with rasterio.open(out_path, "w", **profile) as dst:
-            _write_blocks(dset, dst, factor, linear=settings.linear)
+            _write_blocks(
+                grid, settings.polarization, dst, factor, linear=settings.linear
+            )
     return FrameResult(path, frame_date(path), crs, dx, out_path)
 
 

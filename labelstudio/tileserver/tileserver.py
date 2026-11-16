@@ -312,11 +312,12 @@ def build_index(root: Path | None = None) -> list[dict]:
     ):
         try:
             stats = get_stats(path)
+            tiles = list_tiles(stats)
         except (OSError, KeyError) as exc:
             print(f"Skipping {path}: {exc}", file=sys.stderr)
             continue
         relative = path.relative_to(root).as_posix()
-        index.extend({"file": relative, **tile} for tile in list_tiles(stats))
+        index.extend({"file": relative, **tile} for tile in tiles)
     return index
 
 

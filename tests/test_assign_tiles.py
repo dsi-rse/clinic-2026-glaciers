@@ -251,3 +251,31 @@ def test_the_method_list_is_the_same_in_both_scripts() -> None:
     from utils.tile_split import AUGMENTATION_METHODS  # noqa: PLC0415
 
     assert assign_tiles.AUGMENTATION_METHODS == AUGMENTATION_METHODS
+
+
+def test_master_csv_has_one_reviewer_column_per_copy(
+    tiles: list, tmp_path: Path
+) -> None:
+    """The master CSV has reviewer_1 ... reviewer_N, one column per reviewer."""
+    out = make_assignment(tiles, seed=7)
+    csv_path = tmp_path / "master.csv"
+    assign_tiles.write_master_csv(out, TIER_NAMES, csv_path, COPIES)
+    with csv_path.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == N_TILES
+    for row in rows:
+        reviewers = [row[f"reviewer_{i}"] for i in range(1, COPIES + 1)]
+        assert len(set(reviewers)) == COPIES
+    assert f"reviewer_{COPIES + 1}" not in rows[0]
+
+
+def test_repeated_tier_names_are_rejected() -> None:
+    """Repeated names would let later tiers load under the 'small' limit."""
+    with pytest.raises(SystemExit, match="unique"):
+        assign_tiles.validate_tier_names(["small", "small", "large"], 3)
+
+
+def test_tier_names_must_match_number_of_tiers() -> None:
+    """Too few or too many names is an error."""
+    with pytest.raises(SystemExit, match="same number"):
+        assign_tiles.validate_tier_names(["small", "large"], 3)

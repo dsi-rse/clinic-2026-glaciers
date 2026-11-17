@@ -219,6 +219,21 @@ def split_command(args: argparse.Namespace, run_dir: Path) -> list[str]:
     return command
 
 
+def list_split_files(run_dir: Path) -> list[Path]:
+    """The files of a split in the run folder: the split CSV, its summary and its plots."""
+    return sorted(run_dir.glob("tile_split*_blocks_*km*"))
+
+
+def remove_old_split(run_dir: Path) -> None:
+    """Delete the split of an earlier run of this folder, before step 2 makes a new one.
+
+    split_tiles.py can finish without error and write nothing (it skips the block sizes it
+    cannot split). Without this, step 3 would read the old CSV and report success.
+    """
+    for path in list_split_files(run_dir):
+        path.unlink()
+
+
 def find_split_csv(run_dir: Path) -> Path:
     """The split CSV that step 2 wrote in the run folder (not the summary)."""
     found = [
@@ -228,7 +243,9 @@ def find_split_csv(run_dir: Path) -> Path:
     ]
     if len(found) != 1:
         sys.exit(
-            f"Expected one split CSV in {run_dir}, found {len(found)}. Run step split."
+            f"Step split made {len(found)} split CSV in {run_dir}, expected 1. "
+            "Read the messages of step 2 above (for example 'Skipped'): "
+            "the block size or the box may not fit the tiles."
         )
     return found[0]
 
@@ -295,6 +312,9 @@ def main() -> None:
         f"{args.block_km:g} km blocks, gap {args.gap_km:g} km, seed {args.seed}, "
         f"augmentation {args.augmentation}"
     )
+    print(
+        f"c) Image folder: {args.image_dir}  (LABELSTUDIO_IMAGE_SUBDIR; Label Studio must use the same)"
+    )
     print("\n=== Step 1/4 box")
     print(f"Bounding box (km): {' '.join(str(v) for v in args.region)}")
     check_augmented_frames(args)
@@ -302,6 +322,7 @@ def main() -> None:
 
     if last >= STEPS.index("split"):
         print("\n=== Step 2/4 split")
+        remove_old_split(run_dir)
         run(split_command(args, run_dir))
 
     if last >= STEPS.index("tiles"):
@@ -337,7 +358,9 @@ def main() -> None:
             f"  LABELSTUDIO_ASSIGNMENTS={shown}\n"
             "  LABELSTUDIO_MAX_TIER=small\n"
             f"  TILESERVER_TILE_SIZE={args.tile_size}\n"
-            "Write the full path of the file on your computer, not ~."
+            "Write the full path of the file on your computer, not ~.\n"
+            f"Keep LABELSTUDIO_IMAGE_SUBDIR the same as when you ran the pipeline "
+            f"({args.image_dir.relative_to(DATA_DIR) if args.image_dir.is_relative_to(DATA_DIR) else args.image_dir})."
             + (
                 f"\nThe tiles are the {args.augmentation} frames "
                 "(<name>_"

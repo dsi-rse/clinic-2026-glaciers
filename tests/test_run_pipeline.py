@@ -120,8 +120,8 @@ def test_find_split_csv_ignores_the_summary(tmp_path: Path) -> None:
 
 
 def test_find_split_csv_stops_when_there_is_none(tmp_path: Path) -> None:
-    """Without a split CSV the pipeline stops and says to run the split step."""
-    with pytest.raises(SystemExit, match="Run step split"):
+    """Without a split CSV the pipeline stops and points to the messages of step 2."""
+    with pytest.raises(SystemExit, match="Step split made 0"):
         run_pipeline.find_split_csv(tmp_path)
 
 
@@ -227,3 +227,38 @@ def test_runs_are_written_in_the_repo_not_in_data_dir() -> None:
     """Docker and uv share one output folder: data/pipeline in the repo (git ignores data/)."""
     assert run_pipeline.DEFAULT_RUN_ROOT == run_pipeline.REPO_DIR / "data" / "pipeline"
     assert not run_pipeline.DEFAULT_RUN_ROOT.is_relative_to(run_pipeline.DATA_DIR)
+
+
+def test_a_failed_split_rerun_does_not_reuse_the_old_split(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A good run, then a rerun where split_tiles.py exits 0 but writes nothing: it stops."""
+    split_runs = []
+
+    def fake_run(command: list[str], env: dict[str, str] | None = None) -> None:
+        """Stand-in for the commands: the splitter writes a CSV, or nothing when it fails."""
+        if command[1].endswith("split_tiles.py"):
+            split_runs.append(command)
+            if len(split_runs) == 1:
+                write_split_csv(tmp_path / SPLIT_NAME)
+        # the assign command is not run: it needs the tile files
+
+    monkeypatch.setattr(run_pipeline, "run", fake_run)
+    options = (
+        "--run-dir",
+        str(tmp_path),
+        "--until",
+        "tiles",
+        "--image-dir",
+        str(tmp_path),
+    )
+
+    make_args(monkeypatch, *options)
+    run_pipeline.main()  # first run: the split makes the CSV, step 3 reads it
+    assert (tmp_path / SPLIT_NAME).exists()
+
+    make_args(monkeypatch, *options)
+    with pytest.raises(SystemExit, match="Step split made 0"):
+        run_pipeline.main()  # second run: the splitter writes nothing
+    assert not (tmp_path / SPLIT_NAME).exists()  # the old split was removed, not reused
+    assert split_runs[1:]  # the splitter did run a second time

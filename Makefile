@@ -112,6 +112,7 @@ plot-ice-movement-local:
 # Prepare the tiles for labeling, step by step: box, split, tiles to label and assignment.
 # See scripts/README.md. Label Studio is not part of it: each person loads their own tiles by
 # hand when it finishes (labelstudio/ASSIGNMENTS.md).
+# Set LABELSTUDIO_IMAGE_SUBDIR in .env BEFORE running it; Label Studio must use the same folder.
 #   make pipeline ARGS="--region 1700 620 2200 800 --block-km 122.88"
 pipeline: build-only
 	docker compose run --rm $(project_name) python scripts/run_pipeline.py $(ARGS)

@@ -31,8 +31,8 @@ LABELSTUDIO_ASSIGNMENTS=/mnt/Box/2026-glaciers/tile_assignments.json
 LABELSTUDIO_MAX_TIER=small
 ```
 
-- **`LABELSTUDIO_IMAGE_SUBDIR`** must be exactly the same as everyone else's. Copy it as
-  shown.
+- **`LABELSTUDIO_IMAGE_SUBDIR`** must be exactly the same as everyone else's, and the same one
+  that was set when the assignment was made (`make pipeline` reads it from `.env`). Copy it as shown.
 - **`LABELSTUDIO_ASSIGNEE`** is your name, spelled and capitalized as in the assignment
   (Jeanne, Bailey, Sophie, or Alexandra).
 - **`LABELSTUDIO_ASSIGNMENTS`** is the full path to `tile_assignments.json` on **your**

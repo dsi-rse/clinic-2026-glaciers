@@ -398,6 +398,20 @@ people, seed, batches), for example `run_a3f9c2`. The same settings give the sam
 give another one, so runs never overwrite each other. To choose the name yourself, use `--name amery_july`.
 If a folder already holds a run with other settings, the pipeline stops and says which settings differ.
 
+### Before you run it: set the frames folder in `.env`
+
+Set `LABELSTUDIO_IMAGE_SUBDIR` in your `.env` **before** you run the pipeline, not after. It is the folder
+of the frames inside `DATA_DIR`, and the pipeline reads it when it starts:
+
+```
+LABELSTUDIO_IMAGE_SUBDIR=nisar_data/nisar_gcov_amery
+```
+
+The pipeline and Label Studio (`make labelstudio`) **must use the same image folder**. The assignment
+stores each frame as a path below that folder, so with another folder Label Studio finds no tile that matches
+the assignment. If you start from `.env.example`, the line is commented out and empty: uncomment it and
+fill it in first. The run prints the folder it uses (`Image folder`) and saves it in `pipeline_settings.json`.
+
 ### How to run it
 
 ```bash

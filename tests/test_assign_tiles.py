@@ -262,11 +262,13 @@ def test_csv_reviewer_columns_match_copies(
     with (tmp_path / "assign.csv").open(newline="") as f:
         rows = list(csv.reader(f))
     header, body = rows[0], rows[1:]
-    assert header[4:] == [f"reviewer_{i}" for i in range(1, copies + 1)]
+    reviewer_columns = [f"reviewer_{i}" for i in range(1, copies + 1)]
+    # the reviewers come right after the 4 tile columns; labelstudio_title is last
+    assert header[4:] == [*reviewer_columns, "labelstudio_title"]
     assert len(body) == N_TILES
     for row in body:
         assert len(row) == len(header)
-        reviewers = row[4:]
+        reviewers = row[4 : 4 + copies]
         assert all(reviewers)
         assert len(set(reviewers)) == copies
 

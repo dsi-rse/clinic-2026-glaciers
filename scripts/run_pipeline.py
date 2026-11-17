@@ -46,7 +46,8 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 STEPS = ("box", "split", "tiles", "assign")
 # Amery Ice Shelf box in km (EPSG:3031), from scripts/get_amery_outline.py. The team is
 # choosing a tighter box around the ice shelf: pass it with --region when it is ready.
-DEFAULT_REGION = (1681.978, 609.405, 2246.848, 840.133)
+# DEFAULT_REGION = (1681.978, 609.405, 2246.848, 840.133)
+DEFAULT_REGION = (1989.355, 644.700, 2218.703, 771.010)
 CODE_LENGTH = 6  # characters of the code in the run folder name
 DEFAULT_PEOPLE = ["Jeanne", "Bailey", "Sophie", "Alexandra"]
 # Same folder with Docker (the repo is /project there) and with uv, and git ignores data/

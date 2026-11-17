@@ -140,7 +140,7 @@ python3 labelstudio/assign_tiles.py \
   --split-csv "$DATA_DIR/splits/amery_block_size_comparison/tile_split_region_2048px_blocks_163.84km.csv" \
   --tile-size 2048 \
   --image-dir "$DATA_DIR/nisar_data/nisar_gcov_amery" \
-  --people Jeanne Bailey Sophie Alexandra --seed 42 --tiers 50 150 405 \
+  --people Jeanne Bailey Sophie Alexandra --seed 42 --tiers 10% 30% 100% \
   --out "$DATA_DIR/tile_assignments_2048.json"
 ```
 

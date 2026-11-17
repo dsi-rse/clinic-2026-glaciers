@@ -44,9 +44,9 @@ from utils.tile_split import (
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 STEPS = ("box", "split", "tiles", "assign")
-# Amery Ice Shelf box in km (EPSG:3031), from scripts/get_amery_outline.py. The team is
-# choosing a tighter box around the ice shelf: pass it with --region when it is ready.
-# DEFAULT_REGION = (1681.978, 609.405, 2246.848, 840.133)
+# Amery Ice Shelf box in km (EPSG:3031): x_min, y_min, x_max, y_max. This is the smaller box
+# the team chose. The first, larger box (from scripts/get_amery_outline.py) was
+# (1681.978, 609.405, 2246.848, 840.133)
 DEFAULT_REGION = (1989.355, 644.700, 2218.703, 771.010)
 CODE_LENGTH = 6  # characters of the code in the run folder name
 DEFAULT_PEOPLE = ["Jeanne", "Bailey", "Sophie", "Alexandra"]
@@ -325,10 +325,11 @@ def main() -> None:
         print("\n=== Step 2/4 split")
         remove_old_split(run_dir)
         run(split_command(args, run_dir))
+        # Check right away (also with --until split): the splitter can exit 0 and write nothing
+        split_csv = find_split_csv(run_dir)
 
     if last >= STEPS.index("tiles"):
         print("\n=== Step 3/4 tiles to label")
-        split_csv = find_split_csv(run_dir)
         counts = count_tiles(split_csv)
         print(f"{split_csv.name}")
         print(

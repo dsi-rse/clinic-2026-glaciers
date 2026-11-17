@@ -460,7 +460,7 @@ Use the **JSON**, not the CSVs: only the JSON has your order. Details: `labelstu
 | Option | Default | What it does |
 | --- | --- | --- |
 | `--until` | `assign` | Last step to run: `box`, `split`, `tiles` or `assign`. It always starts at step 1. |
-| `--region` | the Amery box | Bounding box `X_MIN Y_MIN X_MAX Y_MAX` in **km** (EPSG:3031). The team is choosing a tighter box: pass it here when it is ready. |
+| `--region` | the Amery box | Bounding box `X_MIN Y_MIN X_MAX Y_MAX` in **km** (EPSG:3031). Default: the smaller box the team chose, `1989.355 644.700 2218.703 771.010`. The first, larger box was `1681.978 609.405 2246.848 840.133`. |
 | `--date-prefix` | `202607` | Only frames whose start date begins with this (July 2026). Empty uses all frames. |
 | `--tile-size` | 2048 | Tile size in pixels. |
 | `--block-km` | 163.84 | Block size in km. |
@@ -468,7 +468,7 @@ Use the **JSON**, not the CSVs: only the JSON has your order. Details: `labelstu
 | `--image-dir` | `DATA_DIR/$LABELSTUDIO_IMAGE_SUBDIR` | Folder with the `.h5` frames. |
 | `--people` | Jeanne Bailey Sophie Alexandra | Names, spelled as in `LABELSTUDIO_ASSIGNEE`. |
 | `--seed` | 42 | The same seed gives the same assignment. Do not change it after people start labeling. |
-| `--tiers` | `10% 30% 100%` | Sizes of the small, medium and large batches. They are percentages, so they follow the number of tiles in the box. Counts (`50 150 405`) also work. |
+| `--tiers` | `10% 30% 100%` | Sizes of the small, medium and large batches. They are percentages, so they follow the number of tiles in the box. Counts (for example `50 150 400`) also work, but the number of tiles depends on the box. |
 | `--augmentation` | `none` | `high_pass`, `black_tophat`, `clahe` or `unsharp_mask`: the assignment and Label Studio use the augmented frames `<name>_<method>.h5` (see below). The split is not changed. |
 | `--name` | `run_<code>` | Name of the folder in `data/pipeline`. |
 | `--run-dir` | `data/pipeline/<run name>` | Full folder of this run, instead of `--name` (to write somewhere else). |

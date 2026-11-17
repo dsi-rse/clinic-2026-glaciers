@@ -262,3 +262,21 @@ def test_a_failed_split_rerun_does_not_reuse_the_old_split(
         run_pipeline.main()  # second run: the splitter writes nothing
     assert not (tmp_path / SPLIT_NAME).exists()  # the old split was removed, not reused
     assert split_runs[1:]  # the splitter did run a second time
+
+
+def test_until_split_stops_when_the_splitter_writes_no_csv(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With --until split, a splitter that exits 0 without a CSV is an error, not 'Done'."""
+    monkeypatch.setattr(run_pipeline, "run", lambda command, env=None: None)
+    make_args(
+        monkeypatch,
+        "--run-dir",
+        str(tmp_path),
+        "--until",
+        "split",
+        "--image-dir",
+        str(tmp_path),
+    )
+    with pytest.raises(SystemExit, match="Step split made 0"):
+        run_pipeline.main()

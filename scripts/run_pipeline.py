@@ -244,9 +244,10 @@ def find_split_csv(run_dir: Path) -> Path:
     ]
     if len(found) != 1:
         sys.exit(
-            f"Step split made {len(found)} split CSV in {run_dir}, expected 1. "
-            "Read the messages of step 2 above (for example 'Skipped'): "
-            "the block size or the box may not fit the tiles."
+            "\n=== Process stopped: the split step did not make a split CSV\n\n"
+            f"Step split made {len(found)} split CSV in {run_dir}, expected 1.\n\n"
+            "Reason: read the messages of step 2 above (for example 'Skipped'). "
+            "The block size, the gap or the box may not fit the tiles."
         )
     return found[0]
 
@@ -316,20 +317,20 @@ def main() -> None:
     print(
         f"c) Image folder: {args.image_dir}  (LABELSTUDIO_IMAGE_SUBDIR; Label Studio must use the same)"
     )
-    print("\n=== Step 1/4 box")
+    print("\n=== Step 1/4 BOX")
     print(f"Bounding box (km): {' '.join(str(v) for v in args.region)}")
     check_augmented_frames(args)
     save_settings(run_dir, args)
 
     if last >= STEPS.index("split"):
-        print("\n=== Step 2/4 split")
+        print("\n=== Step 2/4 SPLIT")
         remove_old_split(run_dir)
         run(split_command(args, run_dir))
         # Check right away (also with --until split): the splitter can exit 0 and write nothing
         split_csv = find_split_csv(run_dir)
 
     if last >= STEPS.index("tiles"):
-        print("\n=== Step 3/4 tiles to label")
+        print("\n=== Step 3/4 TILE TO LABEL")
         counts = count_tiles(split_csv)
         print(f"{split_csv.name}")
         print(
@@ -339,7 +340,7 @@ def main() -> None:
         )
 
     if last >= STEPS.index("assign"):
-        print("\n=== Step 4/4 assign")
+        print("\n=== Step 4/4 ASSIGN")
         run(assign_command(args, split_csv, assignments))
 
     print(f"\nDone. Files are in {run_dir}")
@@ -353,7 +354,7 @@ def main() -> None:
             else str(assignments)
         )
         print(
-            "\n=== Final Step",
+            "\n=== FINAL STEP",
             "\nPlease adds this to your .env\n"
             "and run make labelstudio:\n"
             "  LABELSTUDIO_ASSIGNEE=<your name>\n"

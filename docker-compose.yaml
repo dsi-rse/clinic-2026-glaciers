@@ -9,11 +9,7 @@ services:
     
     environment:
       DATA_DIR: /data
-      IMAGE_DIR: /data/${LABELSTUDIO_IMAGE_SUBDIR:-}
-      TILE_SIZE: ${TILESERVER_TILE_SIZE:-4096}
-      # Optional: only offer tiles that overlap this box, "xmin,ymin,xmax,ymax" in BBOX_CRS.
-      BBOX: ${TILESERVER_BBOX:-}
-      BBOX_CRS: ${TILESERVER_BBOX_CRS:-EPSG:3031}
+
     
     shm_size: '16gb'
     # At least one of stdin_open or tty is required to make devcontainer work
@@ -56,7 +52,9 @@ services:
     environment:
       IMAGE_DIR: /data/${LABELSTUDIO_IMAGE_SUBDIR:-}
       TILE_SIZE: ${TILESERVER_TILE_SIZE:-4096}
-
+      # Optional: only offer tiles that overlap this box, "xmin,ymin,xmax,ymax" in BBOX_CRS.
+      BBOX: ${TILESERVER_BBOX:-}
+      BBOX_CRS: ${TILESERVER_BBOX_CRS:-EPSG:3031}
 volumes:
   labelstudio-state:
   tileserver-cache:

@@ -7,6 +7,7 @@
 | [`plot_split_steps.py`](#plot_split_stepspy) | Draws the split in four pictures: study area, blocks, sample tiles, tiles after the split | `make plot-split-steps ARGS="--tile-size 1024 --block-km 40.96"` |
 | [`run_pipeline.py`](#run_pipelinepy) | Prepares the tiles for labeling in order: box, split, tiles to label, assignment | `make pipeline` |
 | [`plot_ice_movement.py`](#plot_ice_movementpy) | Plots all the dates of one stack to see how the ice moves | `make plot-ice-movement ARGS="--stack-id 077_A_140"` |
+| [`make_mosaic.py`](#make_mosaicpy) | Stitches one month's frames into a GeoTIFF mosaic to check coverage in QGIS | `docker compose run --rm clinic-2026-glaciers python scripts/make_mosaic.py --help` |
 
 ## Setup
 
@@ -370,6 +371,64 @@ The tiles to label come from a split CSV (`split_tiles.py`) and are given to peo
 4. **Label** with "Label All Tasks": tiles come in the assigned order, and titles end with `[small #n]`.
 
 Full instructions for labelers: `labelstudio/ASSIGNMENTS.md`.
+
+```
+
+## `make_mosaic.py`
+
+### What it does
+
+Stitches the frames from one month into one reduced-resolution GeoTIFF of HHHH backscatter (dB),
+to open in QGIS and check coverage or choose a bounding box. Each frame is averaged down to
+`--resolution` metres. NaN, non-positive and flagged pixels (`inputDataExceptionMask`) are left
+out, as in the tile server. Code: `scripts/make_mosaic.py`.
+
+### Run it
+
+List the frames it would use (nothing is built):
+
+```bash
+docker compose run --rm clinic-2026-glaciers \
+  python scripts/make_mosaic.py /data/nisar_data/nisar_gcov_amery --month 202607 --list
+```
+
+Build the mosaic:
+
+```bash
+docker compose run --rm clinic-2026-glaciers \
+  python scripts/make_mosaic.py /data/nisar_data/nisar_gcov_amery --month 202607 \
+  --resolution 200 --out-dir data/mosaic_out --name july_mosaic
+```
+
+| | Where | What |
+| --- | --- | --- |
+| Input | `/data/...` | `/data` is `DATA_DIR` from `.env`. Point it at the folder with the frames. Subfolders are searched. |
+| Output | `data/mosaic_out/` in the repository (ignored by git) | `july_mosaic.tif`, the per-frame GeoTIFFs in `frames/`, and `frames.csv` (each frame's file, date, CRS and bounds). |
+
+### Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `--month` | all frames | Only frames acquired in this month, `YYYYMM`, from the date in the file name. |
+| `--list` | off | Only list the matching frames and exit. |
+| `--resolution` | 200 | Output pixel size in metres. Larger values give smaller, faster files. |
+| `--method` | `first` | Which frame wins where frames overlap: `first`, `last`, `min` or `max`. |
+| `--crs` | most common | Output projection, for example `EPSG:3031`. Other frames are reprojected to it. |
+| `--polarization`, `--frequency` | `HHHH`, `frequencyA` | The layer to read. |
+| `--linear` | off | Keep linear power instead of dB. |
+| `--out-dir`, `--name` | `mosaic_out`, `mosaic` | Output folder and mosaic file name (without `.tif`). |
+
+Run the script with `--help` for the full list.
+
+### Good to know
+
+- Augmented copies in the same folder (for example `..._black_tophat.h5`) are included if their
+  names match the month. Move them out first, or point the command at a folder with only the
+  original frames. Check with `--list` before building.
+- At the end the script prints the mosaic's bounds in its own projection and in longitude and
+  latitude, a starting point for a bounding box.
+- On macOS, the container cannot read Box files that are online-only. Make the frames available
+  offline first.
 
 ## `run_pipeline.py`
 

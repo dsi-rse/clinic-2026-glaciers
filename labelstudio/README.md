@@ -272,7 +272,32 @@ Adding a class does not invalidate existing annotations, but it does not backfil
 images already submitted come back without the new class. Settle the class list before a
 labeling push, not during one.
 
+### Restricting tiles to a bounding box
+
+Set these in `.env` to have the tile server offer only tiles that overlap a box, then run
+`make labelstudio`:
+
+```
+TILESERVER_BBOX=1989355,644700,2218703,771010   # xmin,ymin,xmax,ymax in metres
+TILESERVER_BBOX_CRS=EPSG:3031                   # default
+```
+
+- Leave `TILESERVER_BBOX` empty or unset to offer every tile with data.
+- The box is in **metres** (EPSG:3031), not km like `--region` in `scripts/`. A tile is kept if
+  it overlaps the box at all. The split in `scripts/split_tiles.py` keeps only tiles completely
+  inside its box.
+- Restriction is per tile, so edge tiles also show data outside the box (up to about 20 km of it
+  at `TILESERVER_TILE_SIZE=2048`). Only the task list is restricted; tile image URLs still work.
+- Frames in a different projection than `TILESERVER_BBOX_CRS` get no tiles.
+- After changing the box, run `make labelstudio` again. It removes unlabeled tasks for tiles
+  outside the box, adds tiles that are newly inside it, and keeps any task with a label, skip or
+  draft.
+- With an assignment (`LABELSTUDIO_ASSIGNEE`), you usually don't need this, because the
+  assignment already covers only the pipeline's box. If the box leaves out assigned tiles, they
+  are skipped with `WARNING: N assigned tile(s) are not in the tile server's index`.
+
 ---
+
 
 ## Troubleshooting
 

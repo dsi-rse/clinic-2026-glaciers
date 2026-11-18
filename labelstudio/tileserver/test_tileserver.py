@@ -13,6 +13,11 @@ HEIGHT, WIDTH, BLOCK, TILE = 300, 250, 64, 128
 MAX_GRAY = 255
 # 3 x 2 tiles of TILE, minus the nearly-empty bottom-right one
 TILES_WITH_DATA = 5
+EPSG = 3031
+OTHER_EPSG = 32633
+PIXEL = 10.0
+X_FIRST = PIXEL / 2
+Y_FIRST = HEIGHT * PIXEL - PIXEL / 2
 
 
 @pytest.fixture
@@ -182,3 +187,128 @@ def test_tile_url() -> None:
     legacy = tileserver.TILE_URL.match("/tile/a.h5/3/12.png")
     assert legacy.group("file", "size", "row", "col") == ("a.h5", None, "3", "12")
     assert tileserver.TILE_URL.match("/tile/a.txt/3/12.png") is None
+
+
+def add_coordinates(path: Path, epsg: int = EPSG) -> None:
+    """Give the frame a pixel grid with its top-left corner at (0, HEIGHT * PIXEL)."""
+    with h5py.File(path, "a") as handle:
+        grid = handle[tileserver.GRID]
+        grid.create_dataset("xCoordinates", data=X_FIRST + PIXEL * np.arange(WIDTH))
+        grid.create_dataset("yCoordinates", data=Y_FIRST - PIXEL * np.arange(HEIGHT))
+        projection = grid.create_dataset("projection", data=np.uint32(epsg))
+        projection.attrs["epsg_code"] = epsg
+
+
+def offered(
+    stats: dict, monkeypatch: pytest.MonkeyPatch, box: str, crs: str = "EPSG:3031"
+) -> set[tuple[int, int]]:
+    """The (row, col) of every tile list_tiles offers with BBOX set to box."""
+    monkeypatch.setattr(tileserver, "BBOX", box)
+    monkeypatch.setattr(tileserver, "BBOX_CRS", crs)
+    return {(t["row"], t["col"]) for t in tileserver.list_tiles(stats, TILE, 0.05)}
+
+
+def test_compute_stats_reads_coordinates(frame: Path) -> None:
+    """The frame's origin, pixel spacing and EPSG code are kept in the stats."""
+    add_coordinates(frame)
+    stats = tileserver.compute_stats(frame)
+    assert stats["epsg"] == EPSG
+    assert (stats["x_first"], stats["y_first"]) == (X_FIRST, Y_FIRST)
+    assert (stats["dx"], stats["dy"]) == (PIXEL, -PIXEL)
+
+
+def test_compute_stats_without_coordinates(frame: Path) -> None:
+    """A frame with no coordinates still gets stats, just without georeferencing."""
+    assert "x_first" not in tileserver.compute_stats(frame)
+
+
+def test_box_selects_tiles(frame: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only tiles that overlap the box are offered."""
+    add_coordinates(frame)
+    stats = tileserver.compute_stats(frame)
+    # Tile columns start at x = 0 and 1280; tile rows start at y = 3000, 1720 and 440.
+    assert offered(stats, monkeypatch, "100,2000,1000,2900") == {(0, 0)}
+    assert offered(stats, monkeypatch, "1000,2000,1500,2900") == {(0, 0), (0, 1)}
+    assert offered(stats, monkeypatch, "100,500,1000,2900") == {(0, 0), (1, 0)}
+
+
+def test_box_touching_a_tile_edge(frame: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A box that only shares an edge with a tile does not select it."""
+    add_coordinates(frame)
+    stats = tileserver.compute_stats(frame)
+    # x = 1280 is the boundary between tile columns 0 and 1.
+    assert offered(stats, monkeypatch, "1280,2000,2000,2900") == {(0, 1)}
+
+
+def test_box_outside_the_frame(frame: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A box beside or above the frame selects no tiles."""
+    add_coordinates(frame)
+    stats = tileserver.compute_stats(frame)
+    assert offered(stats, monkeypatch, "-5000,2000,-4000,2900") == set()
+    assert offered(stats, monkeypatch, "100,4000,1000,5000") == set()
+
+
+def test_box_covering_frame_matches_no_box(
+    frame: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A box larger than the frame offers the same tiles as no box at all."""
+    add_coordinates(frame)
+    stats = tileserver.compute_stats(frame)
+    monkeypatch.setattr(tileserver, "BBOX", "")
+    unrestricted = {
+        (t["row"], t["col"]) for t in tileserver.list_tiles(stats, TILE, 0.05)
+    }
+    assert len(unrestricted) == TILES_WITH_DATA
+    assert offered(stats, monkeypatch, "-100000,-100000,100000,100000") == unrestricted
+
+
+def test_box_still_drops_nearly_empty_tiles(
+    frame: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A box over the one-valid-pixel tile (2, 1) does not bring that tile back."""
+    add_coordinates(frame)
+    stats = tileserver.compute_stats(frame)
+    assert offered(stats, monkeypatch, "1300,10,2400,400") == set()
+
+
+def test_box_in_another_crs_offers_nothing(
+    frame: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Frames in a different projection than BBOX_CRS get no tiles."""
+    add_coordinates(frame, epsg=OTHER_EPSG)
+    stats = tileserver.compute_stats(frame)
+    assert offered(stats, monkeypatch, "100,2000,1000,2900") == set()
+
+
+def test_box_in_unknown_crs_offers_nothing(
+    frame: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A box given in the wrong CRS is not silently applied to a frame."""
+    add_coordinates(frame)
+    stats = tileserver.compute_stats(frame)
+    assert offered(stats, monkeypatch, "100,2000,1000,2900", crs="EPSG:4326") == set()
+
+
+def test_box_needs_coordinates(frame: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Setting BBOX on a frame with no coordinates raises, rather than guessing."""
+    stats = tileserver.compute_stats(frame)
+    monkeypatch.setattr(tileserver, "BBOX", "0,0,1,1")
+    with pytest.raises(KeyError):
+        tileserver.list_tiles(stats, TILE, 0.05)
+
+
+def test_index_applies_box(frame: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The index only lists tiles inside the box."""
+    add_coordinates(frame)
+    monkeypatch.setattr(tileserver, "BBOX", "100,2000,1000,2900")
+    index = tileserver.build_index(frame.parent)
+    assert {(t["row"], t["col"]) for t in index} == {(0, 0)}
+    assert {t["file"] for t in index} == {"frame.h5"}
+
+
+def test_index_skips_frames_without_coordinates_when_box_is_set(
+    frame: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A frame the box cannot be applied to is skipped, not a server error."""
+    monkeypatch.setattr(tileserver, "BBOX", "0,0,1,1")
+    assert tileserver.build_index(frame.parent) == []
